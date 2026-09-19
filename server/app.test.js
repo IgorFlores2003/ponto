@@ -30,6 +30,14 @@ test('permissões, PIN exclusivo, batidas, relatório e sessões', async () => {
     assert.equal(igor.status, 201)
     const yasmim = await request('/employees', { name: 'Yasmim', registration: '002', pin: '2344' }, token)
     assert.equal(yasmim.status, 201)
+    const photo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='
+    assert.equal((await request(`/employees/${igor.data.id}/photo`, { photo })).status, 401)
+    assert.equal((await request(`/employees/${igor.data.id}/photo`, { photo: 'data:image/svg+xml;base64,PHN2Zz4=' }, token)).status, 400)
+    assert.equal((await request(`/employees/${igor.data.id}/photo`, { photo }, token)).status, 204)
+    assert.equal((await request('/employees', undefined, token)).data.find(e => e.id === igor.data.id).photo, photo)
+    assert.equal((await request(`/employees/${igor.data.id}/photo`, { photo: null }, token)).status, 204)
+    assert.equal((await request('/employees', undefined, token)).data.find(e => e.id === igor.data.id).photo, null)
+
     assert.equal((await request(`/employees/${igor.data.id}/job-title`, { job_title: 'Atendente' })).status, 401)
     assert.equal((await request(`/employees/${igor.data.id}/job-title`, { job_title: 'Atendente' }, token)).status, 204)
     assert.equal((await request(`/employees/${igor.data.id}/job-title`, { job_title: 123 }, token)).status, 400)

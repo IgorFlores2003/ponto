@@ -130,3 +130,23 @@ td small { display: block; margin-top: 5px; color: #789185; }
 .pause-breakdown dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
 .break-explanation { font-size: 13px; line-height: 1.6; color: #527566; margin: 12px 0 20px; }
 @media (max-width: 420px) { .admin-tabs { flex-wrap: wrap; } .admin-tabs button { flex-basis: 40%; } }
+.employee-avatar { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 2px solid #dce8e1; }
+.avatar-placeholder { display: inline-grid; place-items: center; background: #e2f3e8; color: #246841; font-size: 18px; font-weight: 700; }
+.worker-identity, .history-employee, .receipt-heading { display: flex; align-items: center; gap: 12px; }
+.history-employee { margin: 18px 0 12px; }
+.photo-editor { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.photo-label { display: grid; gap: 6px; font-size: 12px; color: #315847; }
+.photo-label input { max-width: 220px; font-size: 12px; padding: 6px; }
+.photo-error { width: 100%; color: #913939; font-size: 12px; }
+.clickable-worker { position: relative; transition: border-color .15s, box-shadow .15s; }
+.clickable-worker:hover { border-color: #4b916d; box-shadow: 0 4px 16px #143f3115; }
+.worker-card-link { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; background: transparent; z-index: 1; }
+.worker-card-link:focus-visible { outline: 3px solid #246841; outline-offset: 3px; }
+.history-hint { display: block; margin-top: 14px; color: #246841; font-size: 12px; font-weight: 700; }
+.action-icon { display: inline-grid; place-items: center; flex-shrink: 0; width: 38px; height: 38px; border-radius: 11px; }
+.action-icon svg { width: 23px; height: 23px; }
+.action-arrival { color: #246841; background: #e1f3e7; }
+.action-departure { color: #a24636; background: #fbe9e3; }
+.action-pause { color: #8b5a18; background: #fff0d7; }
+.action-return { color: #315c99; background: #e7effb; }
+.entry .action-icon { display: inline-grid; }

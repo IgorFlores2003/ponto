@@ -1,10 +1,11 @@
 import express from 'express'
+import { validPhoto } from './photos.js'
 import { matchingBreak, validRule, localDateTime } from './breaks.js'
 import { randomBytes } from 'node:crypto'
 import { hashPassword, verifyPassword, hashToken, pinDigest, rateLimit } from './auth.js'
 import { reportFor, validDate } from './reports.js'
 export const transitions = { 'Entrada': ['Saída', 'Início do intervalo'], 'Início do intervalo': ['Fim do intervalo'], 'Fim do intervalo': ['Saída', 'Início do intervalo'], 'Saída': ['Entrada'] }
-const columns = ['id', 'name', 'registration', 'department', 'job_title', 'target_hours', 'created_at']
+const columns = ['id', 'name', 'registration', 'department', 'job_title', 'photo', 'target_hours', 'created_at']
 const publicEmployee = employee => ({ ...Object.fromEntries(columns.map(key => [key, employee[key]])), has_pin: !!employee.pin_digest })
 export function createApp(db, { clock = () => new Date() } = {}) {
   const app = express()
@@ -21,7 +22,7 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     if (req.method === 'OPTIONS') return res.sendStatus(204)
     next()
   })
-  app.use(express.json({ limit: '16kb' }))
+  app.use(express.json({ limit: '400kb' }))
   app.post('/api/auth/login', rateLimit(db, 'login', 10, 15 * 60000), async (req, res) => {
     const { username, password } = req.body || {}
     if (typeof username !== 'string' || typeof password !== 'string' || password.length > 1024) return res.status(400).json({ error: 'Informe usuário e senha.' })
@@ -76,10 +77,10 @@ export function createApp(db, { clock = () => new Date() } = {}) {
   app.post('/api/auth/logout', async (req, res) => { await db('sessions').where({ token_hash: res.locals.session.token_hash }).delete(); res.sendStatus(204) })
   app.get('/api/employees', async (req, res) => res.json((await db('employees').orderBy('name')).map(publicEmployee)))
   app.post('/api/employees', async (req, res) => {
-    const { name, registration, department = '', job_title = '', target_hours = 8, pin } = req.body || {}
-    if (typeof name !== 'string' || !name.trim() || name.trim().length > 120 || typeof registration !== 'string' || !registration.trim() || registration.trim().length > 40 || typeof job_title !== 'string' || job_title.trim().length > 120 || typeof department !== 'string' || department.trim().length > 120 || typeof target_hours !== 'number' || !Number.isFinite(target_hours) || target_hours < 1 || target_hours > 24 || typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'Informe nome, matrícula, jornada entre 1 e 24 horas e PIN de 4 números.' })
+    const { name, registration, department = '', job_title = '', photo = null, target_hours = 8, pin } = req.body || {}
+    if (!validPhoto(photo) || typeof name !== 'string' || !name.trim() || name.trim().length > 120 || typeof registration !== 'string' || !registration.trim() || registration.trim().length > 40 || typeof job_title !== 'string' || job_title.trim().length > 120 || typeof department !== 'string' || department.trim().length > 120 || typeof target_hours !== 'number' || !Number.isFinite(target_hours) || target_hours < 1 || target_hours > 24 || typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'Informe nome, matrícula, jornada entre 1 e 24 horas e PIN de 4 números.' })
     try {
-      const [{ id }] = await db('employees').insert({ name: name.trim(), registration: registration.trim(), department: department.trim(), job_title: job_title.trim(), target_hours, pin_digest: await pinDigest(db, pin), created_at: new Date().toISOString() }).returning('id')
+      const [{ id }] = await db('employees').insert({ name: name.trim(), registration: registration.trim(), department: department.trim(), job_title: job_title.trim(), photo: photo || null, target_hours, pin_digest: await pinDigest(db, pin), created_at: new Date().toISOString() }).returning('id')
       res.status(201).json(publicEmployee(await db('employees').where({ id }).first()))
     } catch (error) { if (['SQLITE_CONSTRAINT_UNIQUE', '23505'].includes(error.code)) return res.status(409).json({ error: 'Matrícula ou PIN já utilizado por outro funcionário.' }); throw error }
   })
@@ -117,6 +118,12 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     if (!await db('employees').where({ id }).first()) return res.status(404).json({ error: 'Funcionário não encontrado.' })
     res.locals.employeeId = id; next()
   })
+  app.post('/api/employees/:id/photo', async (req, res) => {
+    const { photo } = req.body || {}
+    if (!validPhoto(photo)) return res.status(400).json({ error: 'Envie uma foto JPEG, PNG ou WebP de até 250 KB.' })
+    await db('employees').where({ id: res.locals.employeeId }).update({ photo: photo || null })
+    res.sendStatus(204)
+  })
   app.post('/api/employees/:id/job-title', async (req, res) => {
     const { job_title } = req.body || {}
     if (typeof job_title !== 'string' || job_title.trim().length > 120) return res.status(400).json({ error: 'Informe uma função com até 120 caracteres.' })
@@ -132,6 +139,7 @@ export function createApp(db, { clock = () => new Date() } = {}) {
   app.get('/api/employees/:id/entries', async (req, res) => res.json(await db('entries').select('id', 'employee_id', 'kind', 'occurred_at', 'break_name').where({ employee_id: res.locals.employeeId }).orderBy('id')))
   app.use('/api', (req, res) => res.status(404).json({ error: 'Rota não encontrada.' }))
   app.use((error, req, res, next) => {
+    if (error.type === 'entity.too.large') return res.status(413).json({ error: 'Foto muito grande. Escolha uma imagem menor.' })
     if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'JSON inválido.' })
     console.error(error.code || error.name)
     res.status(500).json({ error: 'Não foi possível concluir a operação.' })

@@ -143,3 +143,9 @@ Em **Administrador → Pausas**, cadastre nome (Almoço, Café da tarde, Café d
 No terminal em modo automático, uma pessoa em serviço que bate o PIN dentro da faixa inicia a pausa correspondente. A próxima batida retorna ao serviço, mesmo fora da faixa. Essa pausa automática só é iniciada uma vez por pessoa por dia. Fora de uma faixa elegível, a batida encerra o expediente. **Saída** explícita continua disponível para encerrar a jornada durante uma faixa de pausa. **Iniciar intervalo** classifica a pausa pela faixa vigente, ou como Intervalo fora dela. Os horários não geram batidas sem PIN nem encerram pausas automaticamente.
 
 O nome fica gravado na batida, inclusive no retorno: desativar ou substituir regras não muda o histórico. Para alterar uma regra, desative e cadastre uma nova. Pausas anteriores à funcionalidade permanecem como Intervalo. O dashboard destaca a pausa atual e detalha o tempo por nome, separado das horas em serviço. As novas rotas `/api/break-rules` (GET e POST) e `/api/break-rules/:id/deactivate` (POST) são exclusivas do administrador.
+
+## Fotos e acesso ao histórico
+
+Clique no card do funcionário no dashboard para abrir o relatório individual, mantendo o período selecionado. O card também pode ser acionado pelo teclado. O histórico mostra o nome, a foto e ícones próprios para entrada, saída, retorno, almoço, café e pausa genérica.
+
+Na aba Funcionários, escolha uma foto no cadastro ou no funcionário existente. A foto é opcional, pode ser substituída/removida e só pode ser alterada por administrador. JPG, PNG e WebP de até 10 MB são reduzidos no navegador para até 320 pixels antes do envio; a API aceita até 250 KB e persiste a miniatura no banco, sem depender de disco local na Vercel. Fotos ficam disponíveis apenas nas respostas administrativas já protegidas. Não são tiradas fotos a cada batida.
