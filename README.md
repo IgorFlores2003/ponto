@@ -121,3 +121,11 @@ A conexão usa TLS com validação de certificado e hostname. A CA pública em `
 As migrations ativam RLS nas tabelas do aplicativo e revogam acesso dos papéis públicos `anon` e `authenticated`; somente o backend acessa os dados. Os bloqueios de batidas e de tentativas usam transações, compatíveis com o pooler na porta 6543. O suporte a SQLite permanece para desenvolvimento e testes. Os testes passam caminhos explícitos temporários, sem acessar o banco remoto.
 
 A troca de configuração não copia funcionários ou batidas já existentes no arquivo SQLite para o Supabase.
+
+## Publicar na Vercel
+
+O projeto inclui `vercel.json` para servir o frontend Vite e encaminhar `/api/*` à função Express em `api/index.js`. O backend reutiliza o pool PostgreSQL e não executa migrations ou seeds durante requisições. Mantenha as migrations atualizadas com `npm run db:migrate` antes de publicar mudanças de schema.
+
+Na Vercel, use a raiz do repositório e Node.js 22.x. Configure `DATABASE_URL`, `DATABASE_CA_PATH=server/certs/supabase.crt` e `NODE_ENV=production`. O certificado é incluído na função; arquivos `.env` e bancos locais são excluídos do upload. Não configure `VITE_API_URL` para o frontend web: ele usa `/api` no mesmo domínio. Para compilar Android, configure essa variável localmente com a URL pública da Vercel seguida de `/api`.
+
+A instalação usa `npm ci --include=dev` para incluir os tipos do React e as ferramentas de build mesmo em ambiente de produção. O build força uma nova checagem TypeScript, sem reutilizar arquivos `.tsbuildinfo`. Após enviar as alterações ao GitHub, execute um novo deploy na Vercel.

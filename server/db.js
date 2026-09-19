@@ -14,7 +14,7 @@ export function createDatabase(filename) {
   if (filename === undefined && process.env.DATABASE_URL) {
     return knex({ ...shared, client: 'pg',
       connection: { connectionString: process.env.DATABASE_URL,
-        ssl: { rejectUnauthorized: true, ...(process.env.DATABASE_CA_PATH ? { ca: readFileSync(process.env.DATABASE_CA_PATH, 'utf8') } : {}) },
+        ssl: { rejectUnauthorized: true, ...(process.env.DATABASE_CA_PATH ? { ca: readFileSync(resolve(root, process.env.DATABASE_CA_PATH), 'utf8') } : {}) },
         connectionTimeoutMillis: 15000,
       }, pool: { min: 0, max: 5 }, acquireConnectionTimeout: 20000,
     })
