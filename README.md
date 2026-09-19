@@ -129,3 +129,9 @@ O projeto inclui `vercel.json` para servir o frontend Vite e encaminhar `/api/*`
 Na Vercel, use a raiz do repositório e Node.js 22.x. Configure `DATABASE_URL`, `DATABASE_CA_PATH=server/certs/supabase.crt` e `NODE_ENV=production`. O certificado é incluído na função; arquivos `.env` e bancos locais são excluídos do upload. Não configure `VITE_API_URL` para o frontend web: ele usa `/api` no mesmo domínio. Para compilar Android, configure essa variável localmente com a URL pública da Vercel seguida de `/api`.
 
 A instalação usa `npm ci --include=dev` para incluir os tipos do React e as ferramentas de build mesmo em ambiente de produção. O build força uma nova checagem TypeScript, sem reutilizar arquivos `.tsbuildinfo`. Após enviar as alterações ao GitHub, execute um novo deploy na Vercel.
+
+## Dashboard de acompanhamento
+
+O dashboard separa tempo em serviço e em almoço/intervalo, mostra a situação atual de cada pessoa e permite combinar busca por nome (sem diferenciar acentos) com filtro de função. Os totais refletem apenas os funcionários filtrados. A função é um campo separado do departamento, definido no cadastro ou em **Funcionários → Editar função**. Cadastros antigos começam sem função e são preservados pela migration 004.
+
+Os contadores exibem horas, minutos e segundos. Novas batidas e funções são consultadas a cada 10 segundos, sem apagar a tela; entre consultas os contadores usam o horário retornado pelo servidor. Ao detectar falha ou mais de 30 segundos sem sincronização, a tela exibe a última leitura confirmada. Períodos passados não continuam acumulando horas. O sistema agrupa almoço e outras pausas em **Almoço / intervalo**, pois a batida existente não distingue o motivo da pausa. Relatórios e CSV também incluem função e tempo de intervalo.

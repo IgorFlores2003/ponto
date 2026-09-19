@@ -30,6 +30,11 @@ test('permissões, PIN exclusivo, batidas, relatório e sessões', async () => {
     assert.equal(igor.status, 201)
     const yasmim = await request('/employees', { name: 'Yasmim', registration: '002', pin: '2344' }, token)
     assert.equal(yasmim.status, 201)
+    assert.equal((await request(`/employees/${igor.data.id}/job-title`, { job_title: 'Atendente' })).status, 401)
+    assert.equal((await request(`/employees/${igor.data.id}/job-title`, { job_title: 'Atendente' }, token)).status, 204)
+    assert.equal((await request(`/employees/${igor.data.id}/job-title`, { job_title: 123 }, token)).status, 400)
+    assert.equal((await request('/employees', undefined, token)).data.find(e => e.id === igor.data.id).job_title, 'Atendente')
+
     assert.equal((await request('/employees', { name: 'Outro', registration: '003', pin: '1234' }, token)).status, 409)
     assert.equal((await request('/employees', { name: 'Outro', registration: '003', pin: '123' }, token)).status, 400)
     const list = await request('/employees', undefined, token)

@@ -6,15 +6,27 @@ export function reportFor(employees, entries, from, to, now = Date.now()) {
   const end = Date.parse(`${to}T00:00:00-03:00`) + 86400000
   return employees.map(employee => {
     const history = entries.filter(e => e.employee_id === employee.id)
-    let opened = null, total = 0
+    let opened = null, paused = null, total = 0, breaks = 0
+    const overlap = (a, b) => Math.max(0, Math.min(b, end, now) - Math.max(a, start))
     for (const entry of history) {
       const at = Date.parse(entry.occurred_at)
-      if (entry.kind === 'Entrada' || entry.kind === 'Fim do intervalo') opened = at
-      else if (opened !== null) { total += Math.max(0, Math.min(at, end, now) - Math.max(opened, start)); opened = null }
+      if (at > now) continue
+      if (entry.kind === 'Entrada' || entry.kind === 'Fim do intervalo') {
+        if (paused !== null) breaks += overlap(paused, at)
+        paused = null; opened = at
+      } else {
+        if (opened !== null) total += overlap(opened, at)
+        opened = null
+        if (entry.kind === 'Início do intervalo') paused = at
+        else if (paused !== null) { breaks += overlap(paused, at); paused = null }
+      }
     }
-    if (opened !== null) total += Math.max(0, Math.min(now, end) - Math.max(opened, start))
-    const last = history.at(-1)
-    return { ...employee, minutes: Math.floor(total / 60000), punches: history.filter(e => Date.parse(e.occurred_at) >= start && Date.parse(e.occurred_at) < end).length,
-      status: last?.kind === 'Início do intervalo' ? 'Em intervalo' : opened !== null ? 'Em expediente' : 'Fora do expediente' }
+    if (opened !== null) total += overlap(opened, now)
+    if (paused !== null) breaks += overlap(paused, now)
+    return { ...employee, minutes: Math.floor(total / 60000), work_seconds: Math.floor(total / 1000), break_seconds: Math.floor(breaks / 1000),
+      current_since: opened !== null ? new Date(opened).toISOString() : paused !== null ? new Date(paused).toISOString() : null,
+      punches: history.filter(e => Date.parse(e.occurred_at) >= start && Date.parse(e.occurred_at) < end && Date.parse(e.occurred_at) <= now).length,
+      status: paused !== null ? 'Em intervalo' : opened !== null ? 'Em expediente' : 'Fora do expediente' }
+
   })
 }

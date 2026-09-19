@@ -61,3 +61,62 @@ td small { display: block; margin-top: 5px; color: #789185; }
 .report-note { margin-top: 24px; line-height: 1.6; }
 .export-button { max-width: 220px; }
 @media (min-width: 700px) { .employee-form { grid-template-columns: 1fr 1fr; } .dashboard-metrics { grid-template-columns: repeat(4, 1fr); } }
+.sync-status { padding: 10px 14px; border-radius: 10px; background: #e2f3e8; color: #23573d; font-size: 12px; margin: 14px 0; }
+.sync-status.stale { background: #fff0d7; color: #815b1c; }
+.dashboard-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 20px 0 10px; }
+.dashboard-filters label, .job-editor label { display: grid; gap: 7px; font-size: 12px; color: #315847; }
+.dashboard-filters input, .dashboard-filters select, .job-editor input { min-width: 0; width: 100%; padding: 12px; border: 1px solid #cbded2; border-radius: 10px; background: white; color: #143229; font: inherit; }
+.dashboard-context { font-size: 12px; color: #527566; }
+.live-dashboard .metric strong { font-variant-numeric: tabular-nums; margin: 8px 0; font-size: 21px; }
+.live-dashboard .metric div span { font-size: 12px; color: #527566; }
+.worker-grid { display: grid; gap: 14px; margin-top: 18px; }
+.worker-card { padding: 20px; border: 1px solid #dce8e1; border-radius: 18px; background: #fff; }
+.worker-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.worker-heading h3 { font-size: 17px; overflow-wrap: anywhere; }
+.worker-heading p { color: #527566; font-size: 13px; margin-top: 6px; }
+.worker-status { padding: 7px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+.worker-status.working { background: #e1f3e7; color: #226440; }
+.worker-status.paused { background: #fff0d7; color: #835719; }
+.worker-status.off { background: #edf0ee; color: #59665e; }
+.worker-times { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+.worker-times > div { padding: 14px; border-radius: 12px; background: #f0f8f3; }
+.worker-times > div + div { background: #fff7ec; }
+.worker-times span { display: block; font-size: 12px; color: #527566; margin-bottom: 8px; }
+.worker-times strong { font-size: 24px; font-variant-numeric: tabular-nums; }
+.worker-since { font-size: 12px; color: #527566; margin-top: 14px; }
+.job-editor { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.job-editor button { padding: 8px; border-radius: 8px; background: #e1f3e7; color: #23573d; }
+@media (max-width: 420px) { .dashboard-filters { grid-template-columns: 1fr; } .worker-heading { flex-direction: column; } .worker-times strong { font-size: 20px; } .live-dashboard .metric strong { font-size: 17px; } }
+.password-field { display: block; position: relative; min-width: 0; width: 100%; }
+.password-field input { padding-right: 52px; }
+.pin-form .password-field input { padding-left: 52px; padding-right: 52px; }
+.password-toggle { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 44px; height: 40px; padding: 0; border-radius: 9px; color: #315847; background: transparent; }
+.password-toggle:hover { background: #eaf1ed; }
+.password-toggle:disabled { transform: translateY(-50%); }
+/* Terminal compacto; altura natural preserva acesso com teclado e zoom. */
+.terminal-shell { min-height: 100dvh; padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)); }
+.terminal-frame { min-height: 0; padding: 16px; border-radius: 22px; }
+.terminal-frame .topbar { margin-bottom: 14px; gap: 10px; }
+.terminal-frame .clock-card { padding: 16px; border-radius: 18px; }
+.terminal-frame .fingerprint { display: none; }
+.terminal-frame .clock-card h2 { font-size: 22px; margin: 3px 0 6px; }
+.terminal-frame .light-muted { max-width: 310px; font-size: 12px; }
+.terminal-frame .pin-form { margin-top: 14px; gap: 7px; }
+.terminal-frame .pin-form input { padding-top: 9px; padding-bottom: 9px; font-size: 28px; }
+.terminal-frame .pin-form select { min-height: 44px; padding: 10px 6px; font-size: 16px; }
+.terminal-frame .pin-form .primary-button { min-height: 46px; margin: 5px 0 8px; padding: 11px; }
+.terminal-frame .clock-card small { display: block; line-height: 1.4; font-size: 11px; }
+.terminal-frame .terminal-footer { margin-top: 10px; line-height: 1.4; }
+.terminal-frame .terminal-footer a { display: inline-flex; align-items: center; min-height: 44px; }
+.terminal-frame .receipt { padding: 12px; margin: 10px 0 0; border-radius: 12px; }
+.terminal-frame .receipt h2 { font-size: 18px; }
+.terminal-frame .receipt p { margin: 4px 0; }
+.terminal-frame .receipt strong { font-size: 13px; }
+.terminal-frame .feedback { margin: 10px 0 0; padding: 10px; }
+@media (max-height: 600px) {
+  .terminal-frame { padding: 10px; }
+  .terminal-frame .topbar { margin-bottom: 8px; }
+  .terminal-frame .clock-card { padding: 12px; }
+  .terminal-frame .pin-form { margin-top: 10px; }
+  .terminal-frame .terminal-footer { margin-top: 4px; }
+}
