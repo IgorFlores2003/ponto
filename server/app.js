@@ -1,11 +1,12 @@
 import express from 'express'
 import { validPhoto } from './photos.js'
+import { parseDuration } from './durations.js'
 import { matchingBreak, validRule, localDateTime } from './breaks.js'
 import { randomBytes } from 'node:crypto'
 import { hashPassword, verifyPassword, hashToken, pinDigest, rateLimit } from './auth.js'
 import { reportFor, validDate } from './reports.js'
 export const transitions = { 'Entrada': ['Saída', 'Início do intervalo'], 'Início do intervalo': ['Fim do intervalo'], 'Fim do intervalo': ['Saída', 'Início do intervalo'], 'Saída': ['Entrada'] }
-const columns = ['id', 'name', 'registration', 'department', 'job_title', 'photo', 'target_hours', 'created_at']
+const columns = ['id', 'name', 'registration', 'department', 'job_title', 'photo', 'target_hours', 'work_minutes', 'break_minutes', 'created_at']
 const publicEmployee = employee => ({ ...Object.fromEntries(columns.map(key => [key, employee[key]])), has_pin: !!employee.pin_digest })
 export function createApp(db, { clock = () => new Date() } = {}) {
   const app = express()
@@ -36,7 +37,7 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     res.json({ token, expires_at, username: admin.username })
   })
   app.post('/api/terminal/punch', rateLimit(db, 'pin', 30, 60000), async (req, res) => {
-    const { pin, kind = 'auto', request_id } = req.body || {}
+    const { pin, kind = 'auto', break_rule_id, request_id } = req.body || {}
     if (typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'Informe um PIN de 4 números.' })
     if (typeof request_id !== 'string' || !/^[a-f0-9-]{36}$/i.test(request_id)) return res.status(400).json({ error: 'Identificador de batida inválido.' })
     if (kind !== 'auto' && !Object.hasOwn(transitions, kind)) return res.status(400).json({ error: 'Tipo de batida inválido.' })
@@ -48,7 +49,8 @@ export function createApp(db, { clock = () => new Date() } = {}) {
       if (previous) return previous.employee_id === employee.id ? previous : null
       const last = await trx('entries').where({ employee_id: employee.id }).orderBy('id', 'desc').first()
       const now = clock()
-      const rule = matchingBreak(await trx('break_rules').where({ active: true }).orderBy('id'), now)
+      const selectedRule = break_rule_id ? await trx('break_rules').where({ id: Number(break_rule_id), active: true }).first() : null
+      const rule = selectedRule || matchingBreak(await trx('break_rules').where({ active: true }).orderBy('id'), now)
       let next = kind === 'auto' ? (!last || last.kind === 'Saída' ? 'Entrada' : last.kind === 'Início do intervalo' ? 'Fim do intervalo' : 'Saída') : kind
       if (kind === 'auto' && next === 'Saída' && rule) {
         const { date } = localDateTime(now)
@@ -65,6 +67,10 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     if (!result) return res.status(409).json({ error: 'Batida incompatível com a jornada ou registrada há poucos segundos. Confira o tipo e aguarde 5 segundos.' })
     res.json({ employee_name: employee.name, kind: result.kind, break_name: result.break_name, occurred_at: result.occurred_at })
   })
+  app.get('/api/terminal/break-rules', async (req, res) => {
+    const { date } = localDateTime()
+    res.json(await db('break_rules').select('id', 'name', 'starts_at', 'ends_at', 'effective_from').where({ active: true }).where('effective_from', '<=', date).orderBy('starts_at'))
+  })
   // Todas as demais rotas da API são exclusivas do administrador.
   app.use('/api', async (req, res, next) => {
     const token = req.headers.authorization?.match(/^Bearer ([a-f0-9]{64})$/)?.[1]
@@ -77,10 +83,12 @@ export function createApp(db, { clock = () => new Date() } = {}) {
   app.post('/api/auth/logout', async (req, res) => { await db('sessions').where({ token_hash: res.locals.session.token_hash }).delete(); res.sendStatus(204) })
   app.get('/api/employees', async (req, res) => res.json((await db('employees').orderBy('name')).map(publicEmployee)))
   app.post('/api/employees', async (req, res) => {
-    const { name, registration, department = '', job_title = '', photo = null, target_hours = 8, pin } = req.body || {}
-    if (!validPhoto(photo) || typeof name !== 'string' || !name.trim() || name.trim().length > 120 || typeof registration !== 'string' || !registration.trim() || registration.trim().length > 40 || typeof job_title !== 'string' || job_title.trim().length > 120 || typeof department !== 'string' || department.trim().length > 120 || typeof target_hours !== 'number' || !Number.isFinite(target_hours) || target_hours < 1 || target_hours > 24 || typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'Informe nome, matrícula, jornada entre 1 e 24 horas e PIN de 4 números.' })
+    const { name, registration, department = '', job_title = '', photo = null, target_hours = 8, work_time, break_time, pin } = req.body || {}
+    const work_minutes = parseDuration(work_time ?? '08:00')
+    const break_minutes = parseDuration(break_time ?? '01:00')
+    if (!validPhoto(photo) || typeof name !== 'string' || !name.trim() || name.trim().length > 120 || typeof registration !== 'string' || !registration.trim() || registration.trim().length > 40 || typeof job_title !== 'string' || job_title.trim().length > 120 || typeof department !== 'string' || department.trim().length > 120 || (work_minutes === null || work_minutes < 1 || work_minutes > 1440) || (break_minutes === null || break_minutes < 0 || break_minutes > 720) || typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'Informe nome, matrícula, serviço (HH:MM), intervalo (HH:MM) e PIN de 4 números.' })
     try {
-      const [{ id }] = await db('employees').insert({ name: name.trim(), registration: registration.trim(), department: department.trim(), job_title: job_title.trim(), photo: photo || null, target_hours, pin_digest: await pinDigest(db, pin), created_at: new Date().toISOString() }).returning('id')
+      const [{ id }] = await db('employees').insert({ name: name.trim(), registration: registration.trim(), department: department.trim(), job_title: job_title.trim(), photo: photo || null, target_hours: work_minutes / 60, work_minutes, break_minutes, pin_digest: await pinDigest(db, pin), created_at: new Date().toISOString() }).returning('id')
       res.status(201).json(publicEmployee(await db('employees').where({ id }).first()))
     } catch (error) { if (['SQLITE_CONSTRAINT_UNIQUE', '23505'].includes(error.code)) return res.status(409).json({ error: 'Matrícula ou PIN já utilizado por outro funcionário.' }); throw error }
   })
@@ -105,6 +113,16 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     if (!count) return res.status(404).json({ error: 'Pausa não encontrada.' })
     res.sendStatus(204)
   })
+  app.post('/api/break-rules/:id', async (req, res) => {
+    const id = Number(req.params.id)
+    const rule = req.body || {}
+    if (!Number.isSafeInteger(id) || id <= 0 || !validRule(rule) || rule.effective_from < localDateTime().date) return res.status(400).json({ error: 'Informe uma pausa válida a partir de hoje.' })
+    const conflict = await db('break_rules').where({ active: true }).whereNot({ id }).where('starts_at', '<', rule.ends_at).where('ends_at', '>', rule.starts_at).first()
+    if (conflict) return res.status(409).json({ error: 'Essa faixa coincide com outra pausa ativa.' })
+    const count = await db('break_rules').where({ id }).update({ name: rule.name.trim(), starts_at: rule.starts_at, ends_at: rule.ends_at, effective_from: rule.effective_from })
+    if (!count) return res.status(404).json({ error: 'Pausa não encontrada.' })
+    res.json(await db('break_rules').where({ id }).first())
+  })
   app.get('/api/reports', async (req, res) => {
     const { from, to } = req.query
     if (!validDate(from) || !validDate(to) || from > to || Date.parse(to) - Date.parse(from) > 366 * 86400000) return res.status(400).json({ error: 'Informe um período válido de até 367 dias.' })
@@ -122,6 +140,14 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     const { photo } = req.body || {}
     if (!validPhoto(photo)) return res.status(400).json({ error: 'Envie uma foto JPEG, PNG ou WebP de até 250 KB.' })
     await db('employees').where({ id: res.locals.employeeId }).update({ photo: photo || null })
+    res.sendStatus(204)
+  })
+  app.post('/api/employees/:id/schedule', async (req, res) => {
+    const { department = '', job_title = '', work_time, break_time } = req.body || {}
+    const work_minutes = parseDuration(work_time)
+    const break_minutes = parseDuration(break_time)
+    if (typeof department !== 'string' || department.length > 120 || typeof job_title !== 'string' || job_title.length > 120 || work_minutes === null || work_minutes < 1 || work_minutes > 1440 || break_minutes === null || break_minutes < 0 || break_minutes > 720) return res.status(400).json({ error: 'Informe função, departamento, serviço e intervalo válidos.' })
+    await db('employees').where({ id: res.locals.employeeId }).update({ department: department.trim(), job_title: job_title.trim(), target_hours: work_minutes / 60, work_minutes, break_minutes })
     res.sendStatus(204)
   })
   app.post('/api/employees/:id/job-title', async (req, res) => {

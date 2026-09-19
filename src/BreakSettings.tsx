@@ -6,12 +6,13 @@ export default function BreakSettings({ request, onError }: { request: <T>(path:
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [notice, setNotice] = useState('')
+  const [editing, setEditing] = useState<number | null>(null)
   const [form, setForm] = useState({ name: '', starts_at: '', ends_at: '', effective_from: today() })
   async function load() { try { setRules(await request<Rule[]>('/break-rules')); setLoaded(true) } catch (err) { onError(err) } }
   useEffect(() => { void load() }, [])
   async function save(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setNotice('')
-    try { await request('/break-rules', form); setForm({ name: '', starts_at: '', ends_at: '', effective_from: today() }); await load(); setNotice('Pausa cadastrada. Será identificada nas novas batidas a partir da vigência.') }
+    try { await request(editing ? `/break-rules/${editing}` : '/break-rules', form); setForm({ name: '', starts_at: '', ends_at: '', effective_from: today() }); setEditing(null); await load(); setNotice(editing ? 'Pausa atualizada.' : 'Pausa cadastrada. Será identificada nas novas batidas a partir da vigência.') }
     catch (err) { onError(err) } finally { setBusy(false) }
   }
   async function deactivate(id: number) {
@@ -25,6 +26,6 @@ export default function BreakSettings({ request, onError }: { request: <T>(path:
     <p className="break-explanation">Horário de Brasília. As faixas não podem se sobrepor. Para mudar uma pausa, desative a antiga e cadastre a nova. Batidas antigas mantêm o nome original.</p>
     {!loaded && <button className="text-button" onClick={load}>Carregar pausas</button>}
     {loaded && rules.length === 0 && <p className="empty">Nenhuma pausa cadastrada. Defina as faixas reais de almoço e café da sua equipe.</p>}
-    {rules.map(rule => <article className="employee-card" key={rule.id}><div><strong>{rule.name}</strong><p>{rule.starts_at}–{rule.ends_at} · a partir de {rule.effective_from.split('-').reverse().join('/')}</p><p>{!rule.active ? 'Desativada' : rule.effective_from > today() ? 'Agendada' : 'Ativa'}</p></div>{rule.active && <button className="text-button" disabled={busy} onClick={() => deactivate(rule.id)}>Desativar</button>}</article>)}
+    {rules.map(rule => <article className="employee-card" key={rule.id}><div><strong>{rule.name}</strong><p>{rule.starts_at}–{rule.ends_at} · a partir de {rule.effective_from.split('-').reverse().join('/')}</p><p>{!rule.active ? 'Desativada' : rule.effective_from > today() ? 'Agendada' : 'Ativa'}</p></div>{rule.active && <div className="employee-actions"><button className="text-button" disabled={busy} onClick={() => { setEditing(rule.id); setForm({ name: rule.name, starts_at: rule.starts_at, ends_at: rule.ends_at, effective_from: rule.effective_from }) }}>Editar</button><button className="text-button" disabled={busy} onClick={() => deactivate(rule.id)}>Desativar</button></div>}</article>)}
   </section>
 }

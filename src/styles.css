@@ -79,13 +79,21 @@ td small { display: block; margin-top: 5px; color: #789185; }
 .worker-status.paused { background: #fff0d7; color: #835719; }
 .worker-status.off { background: #edf0ee; color: #59665e; }
 .worker-times { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+.worker-times { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .worker-times > div { padding: 14px; border-radius: 12px; background: #f0f8f3; }
 .worker-times > div + div { background: #fff7ec; }
 .worker-times span { display: block; font-size: 12px; color: #527566; margin-bottom: 8px; }
 .worker-times strong { font-size: 24px; font-variant-numeric: tabular-nums; }
 .worker-since { font-size: 12px; color: #527566; margin-top: 14px; }
+.debt-metric { border-color: #f0d4b5; background: #fffaf3; }
+.debt-text, .debt-value { color: #a24636; font-weight: 800; }
 .job-editor { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .job-editor button { padding: 8px; border-radius: 8px; background: #e1f3e7; color: #23573d; }
+.schedule-editor { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+.schedule-editor label { display: grid; gap: 5px; color: #527566; font-size: 11px; }
+.schedule-editor input { min-width: 0; width: 100%; padding: 8px; border: 1px solid #cbded2; border-radius: 8px; font: inherit; }
+.schedule-editor button { padding: 8px 10px; border-radius: 8px; background: #e1f3e7; color: #23573d; }
+@media (max-width: 700px) { .worker-times { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 420px) { .dashboard-filters { grid-template-columns: 1fr; } .worker-heading { flex-direction: column; } .worker-times strong { font-size: 20px; } .live-dashboard .metric strong { font-size: 17px; } }
 .password-field { display: block; position: relative; min-width: 0; width: 100%; }
 .password-field input { padding-right: 52px; }
@@ -150,3 +158,6 @@ td small { display: block; margin-top: 5px; color: #789185; }
 .action-pause { color: #8b5a18; background: #fff0d7; }
 .action-return { color: #315c99; background: #e7effb; }
 .entry .action-icon { display: inline-grid; }
+.export-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.export-actions .primary-button, .export-actions .secondary-button { width: auto; margin: 0; padding: 11px 16px; }
+.pin-help { display: block; color: #d7f1df; font-size: 11px; line-height: 1.4; }

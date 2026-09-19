@@ -134,6 +134,12 @@ A instalação usa `npm ci --include=dev` para incluir os tipos do React e as fe
 
 O dashboard separa tempo em serviço e em almoço/intervalo, mostra a situação atual de cada pessoa e permite combinar busca por nome (sem diferenciar acentos) com filtro de função. Os totais refletem apenas os funcionários filtrados. A função é um campo separado do departamento, definido no cadastro ou em **Funcionários → Editar função**. Cadastros antigos começam sem função e são preservados pela migration 004.
 
+No cadastro de funcionário, informe **Tempo de serviço por dia** e **Tempo esperado de almoço/intervalo** no formato `HH:MM`. Exemplo: `07:20` de serviço e `01:00` de almoço. O dashboard e o relatório calculam a meta prevista em dias úteis, comparam com o serviço realizado e mostram o total de horas devidas. Uma entrada atrasada, um retorno atrasado do almoço/café ou uma pausa maior reduz o tempo de serviço e aumenta o saldo devido. A meta não conta sábado e domingo.
+
+Na aba **Funcionários**, use **Editar funcionário** para alterar função, departamento, serviço diário e intervalo esperado. No card do dashboard, a tela mostra separadamente: previstas, trabalhadas, devidas e intervalo a mais. O intervalo a mais é o tempo de pausas realizadas acima do intervalo esperado acumulado no período. Por exemplo, com meta de 100 horas e 20 trabalhadas, o card mostra 80 horas devidas.
+
+Na aba **Relatórios**, o administrador pode baixar o período filtrado em PDF ou Excel (além do CSV). O arquivo Excel é compatível com o Microsoft Excel e inclui horas previstas, trabalhadas, devidas, intervalo realizado, intervalo a mais e quantidade de batidas.
+
 Os contadores exibem horas, minutos e segundos. Novas batidas e funções são consultadas a cada 10 segundos, sem apagar a tela; entre consultas os contadores usam o horário retornado pelo servidor. Ao detectar falha ou mais de 30 segundos sem sincronização, a tela exibe a última leitura confirmada. Períodos passados não continuam acumulando horas. Pausas novas recebem o nome configurado por faixa de horário; registros antigos sem classificação continuam como Intervalo. Relatórios e CSV também incluem função e tempo de intervalo.
 
 ## Pausas por horário
