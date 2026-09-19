@@ -5,6 +5,9 @@ import ActionIcon from './ActionIcon'
 import BreakSettings from './BreakSettings'
 import PasswordInput from './PasswordInput'
 import { jsPDF } from 'jspdf'
+import { Capacitor } from '@capacitor/core'
+import { Directory, Filesystem } from '@capacitor/filesystem'
+import { Share } from '@capacitor/share'
 
 type Employee = { id: number; name: string; registration: string; department: string; job_title: string; photo: string | null; target_hours: number; work_minutes: number; break_minutes: number; has_pin: boolean }
 type Entry = { id: number; kind: string; break_name?: string | null; occurred_at: string }
@@ -25,6 +28,14 @@ const timestamp = (value: string) => new Date(value).toLocaleString('pt-BR', { t
 const hours = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
 const message = (error: unknown) => error instanceof Error ? error.message : 'Não foi possível acessar o servidor.'
 async function deliverFile(blob: Blob, filename: string) {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob) })
+      const saved = await Filesystem.writeFile({ path: filename, data: base64, directory: Directory.Cache, recursive: true })
+      await Share.share({ title: filename, text: 'Relatório Ponto Digital', url: saved.uri, dialogTitle: 'Compartilhar relatório' })
+      return
+    } catch { /* fallback do navegador abaixo */ }
+  }
   const file = new File([blob], filename, { type: blob.type })
   const shareNavigator = navigator as Navigator & { canShare?: (data: { files: File[] }) => boolean; share?: (data: { files: File[]; title?: string }) => Promise<void> }
   if (shareNavigator.share && shareNavigator.canShare?.({ files: [file] })) {

@@ -93,7 +93,7 @@ export function createApp(db, { clock = () => new Date() } = {}) {
       res.status(201).json(publicEmployee(await db('employees').where({ id }).first()))
     } catch (error) { if (['SQLITE_CONSTRAINT_UNIQUE', '23505'].includes(error.code)) return res.status(409).json({ error: 'Matrícula ou PIN já utilizado por outro funcionário.' }); throw error }
   })
-  app.get('/api/break-rules', async (req, res) => res.json(await db('break_rules').orderBy('starts_at')))
+  app.get('/api/break-rules', async (req, res) => res.json(await db('break_rules').where({ active: true }).orderBy('starts_at')))
   app.post('/api/break-rules', async (req, res) => {
     const rule = req.body || {}
     if (!validRule(rule) || rule.effective_from < localDateTime().date) return res.status(400).json({ error: 'Informe nome, faixa de horário no mesmo dia e início de vigência a partir de hoje.' })
