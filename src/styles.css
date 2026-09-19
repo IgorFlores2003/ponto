@@ -120,3 +120,13 @@ td small { display: block; margin-top: 5px; color: #789185; }
   .terminal-frame .pin-form { margin-top: 10px; }
   .terminal-frame .terminal-footer { margin-top: 4px; }
 }
+.worker-status { font-size: 12px; border-radius: 8px; padding: 10px 12px; max-width: 100%; overflow-wrap: anywhere; }
+.worker-heading { flex-wrap: wrap; }
+.worker-status.working { color: #fff; background: #246841; }
+.worker-status.paused { color: #633a00; background: #ffe0a3; border: 1px solid #e8b454; }
+.pause-breakdown { margin: 14px 0 0; display: grid; gap: 7px; }
+.pause-breakdown > div { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 8px 0; border-bottom: 1px solid #edf0ee; }
+.pause-breakdown dt { overflow-wrap: anywhere; }
+.pause-breakdown dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.break-explanation { font-size: 13px; line-height: 1.6; color: #527566; margin: 12px 0 20px; }
+@media (max-width: 420px) { .admin-tabs { flex-wrap: wrap; } .admin-tabs button { flex-basis: 40%; } }

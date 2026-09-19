@@ -1,11 +1,12 @@
 import express from 'express'
+import { matchingBreak, validRule, localDateTime } from './breaks.js'
 import { randomBytes } from 'node:crypto'
 import { hashPassword, verifyPassword, hashToken, pinDigest, rateLimit } from './auth.js'
 import { reportFor, validDate } from './reports.js'
 export const transitions = { 'Entrada': ['Saída', 'Início do intervalo'], 'Início do intervalo': ['Fim do intervalo'], 'Fim do intervalo': ['Saída', 'Início do intervalo'], 'Saída': ['Entrada'] }
 const columns = ['id', 'name', 'registration', 'department', 'job_title', 'target_hours', 'created_at']
 const publicEmployee = employee => ({ ...Object.fromEntries(columns.map(key => [key, employee[key]])), has_pin: !!employee.pin_digest })
-export function createApp(db) {
+export function createApp(db, { clock = () => new Date() } = {}) {
   const app = express()
   const dummyHash = hashPassword(randomBytes(24).toString('hex'))
   app.use((req, res, next) => {
@@ -45,15 +46,23 @@ export function createApp(db) {
       const previous = await trx('entries').where({ request_id }).first()
       if (previous) return previous.employee_id === employee.id ? previous : null
       const last = await trx('entries').where({ employee_id: employee.id }).orderBy('id', 'desc').first()
-      const next = kind === 'auto' ? (!last || last.kind === 'Saída' ? 'Entrada' : last.kind === 'Início do intervalo' ? 'Fim do intervalo' : 'Saída') : kind
+      const now = clock()
+      const rule = matchingBreak(await trx('break_rules').where({ active: true }).orderBy('id'), now)
+      let next = kind === 'auto' ? (!last || last.kind === 'Saída' ? 'Entrada' : last.kind === 'Início do intervalo' ? 'Fim do intervalo' : 'Saída') : kind
+      if (kind === 'auto' && next === 'Saída' && rule) {
+        const { date } = localDateTime(now)
+        const alreadyTaken = await trx('entries').where({ employee_id: employee.id, break_rule_id: rule.id, kind: 'Início do intervalo' }).where('occurred_at', '>=', new Date(`${date}T00:00:00-03:00`).toISOString()).first()
+        if (!alreadyTaken) next = 'Início do intervalo'
+      }
+      const breakInfo = next === 'Início do intervalo' ? { break_rule_id: rule?.id || null, break_name: rule?.name || 'Intervalo' } : next === 'Fim do intervalo' ? { break_rule_id: last?.break_rule_id || null, break_name: last?.break_name || 'Intervalo' } : {}
       if (!(last ? transitions[last.kind] : ['Entrada']).includes(next)) return null
       // Evita que dois envios simultâneos gerem entrada e saída acidentais.
-      if (last && Date.now() - Date.parse(last.occurred_at) < 5000) return null
-      const [{ id }] = await trx('entries').insert({ employee_id: employee.id, kind: next, occurred_at: new Date().toISOString(), request_id }).returning('id')
+      if (last && now.getTime() - Date.parse(last.occurred_at) < 5000) return null
+      const [{ id }] = await trx('entries').insert({ employee_id: employee.id, kind: next, occurred_at: now.toISOString(), request_id, ...breakInfo }).returning('id')
       return trx('entries').where({ id }).first()
     })
     if (!result) return res.status(409).json({ error: 'Batida incompatível com a jornada ou registrada há poucos segundos. Confira o tipo e aguarde 5 segundos.' })
-    res.json({ employee_name: employee.name, kind: result.kind, occurred_at: result.occurred_at })
+    res.json({ employee_name: employee.name, kind: result.kind, break_name: result.break_name, occurred_at: result.occurred_at })
   })
   // Todas as demais rotas da API são exclusivas do administrador.
   app.use('/api', async (req, res, next) => {
@@ -73,6 +82,27 @@ export function createApp(db) {
       const [{ id }] = await db('employees').insert({ name: name.trim(), registration: registration.trim(), department: department.trim(), job_title: job_title.trim(), target_hours, pin_digest: await pinDigest(db, pin), created_at: new Date().toISOString() }).returning('id')
       res.status(201).json(publicEmployee(await db('employees').where({ id }).first()))
     } catch (error) { if (['SQLITE_CONSTRAINT_UNIQUE', '23505'].includes(error.code)) return res.status(409).json({ error: 'Matrícula ou PIN já utilizado por outro funcionário.' }); throw error }
+  })
+  app.get('/api/break-rules', async (req, res) => res.json(await db('break_rules').orderBy('starts_at')))
+  app.post('/api/break-rules', async (req, res) => {
+    const rule = req.body || {}
+    if (!validRule(rule) || rule.effective_from < localDateTime().date) return res.status(400).json({ error: 'Informe nome, faixa de horário no mesmo dia e início de vigência a partir de hoje.' })
+    const result = await db.transaction(async trx => {
+      if (trx.client.config.client === 'pg') await trx.raw('select pg_advisory_xact_lock(845723)')
+      const conflict = await trx('break_rules').where({ active: true }).where('starts_at', '<', rule.ends_at).where('ends_at', '>', rule.starts_at).first()
+      if (conflict) return null
+      const [{ id }] = await trx('break_rules').insert({ name: rule.name.trim(), starts_at: rule.starts_at, ends_at: rule.ends_at, effective_from: rule.effective_from, active: true }).returning('id')
+      return trx('break_rules').where({ id }).first()
+    })
+    if (!result) return res.status(409).json({ error: 'Essa faixa coincide com outra pausa ativa. Use horários diferentes ou desative a pausa anterior.' })
+    res.status(201).json(result)
+  })
+  app.post('/api/break-rules/:id/deactivate', async (req, res) => {
+    const id = Number(req.params.id)
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Pausa inválida.' })
+    const count = await db('break_rules').where({ id }).update({ active: false })
+    if (!count) return res.status(404).json({ error: 'Pausa não encontrada.' })
+    res.sendStatus(204)
   })
   app.get('/api/reports', async (req, res) => {
     const { from, to } = req.query
@@ -99,7 +129,7 @@ export function createApp(db) {
     try { await db('employees').where({ id: res.locals.employeeId }).update({ pin_digest: await pinDigest(db, pin) }); res.sendStatus(204) }
     catch (error) { if (['SQLITE_CONSTRAINT_UNIQUE', '23505'].includes(error.code)) return res.status(409).json({ error: 'PIN já utilizado por outro funcionário.' }); throw error }
   })
-  app.get('/api/employees/:id/entries', async (req, res) => res.json(await db('entries').select('id', 'employee_id', 'kind', 'occurred_at').where({ employee_id: res.locals.employeeId }).orderBy('id')))
+  app.get('/api/employees/:id/entries', async (req, res) => res.json(await db('entries').select('id', 'employee_id', 'kind', 'occurred_at', 'break_name').where({ employee_id: res.locals.employeeId }).orderBy('id')))
   app.use('/api', (req, res) => res.status(404).json({ error: 'Rota não encontrada.' }))
   app.use((error, req, res, next) => {
     if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'JSON inválido.' })
