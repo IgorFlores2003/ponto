@@ -16,8 +16,9 @@ export default function BreakSettings({ request, onError }: { request: <T>(path:
     catch (err) { onError(err) } finally { setBusy(false) }
   }
   async function deactivate(id: number) {
+    if (!window.confirm('Excluir esta pausa? As batidas antigas continuarão preservadas.')) return
     setBusy(true)
-    try { await request(`/break-rules/${id}/deactivate`, {}); await load(); setNotice('Pausa desativada. O histórico foi preservado.') }
+    try { await request(`/break-rules/${id}/delete`, {}); await load(); setNotice('Pausa excluída. O histórico foi preservado.') }
     catch (err) { onError(err) } finally { setBusy(false) }
   }
   return <section><h2>Pausas da equipe</h2><p className="break-explanation">Cadastre almoço, café da tarde ou outras pausas. A faixa indica quando a batida pode iniciar essa pausa; o retorno acontece quando o funcionário bater o PIN novamente.</p>
@@ -26,6 +27,6 @@ export default function BreakSettings({ request, onError }: { request: <T>(path:
     <p className="break-explanation">Horário de Brasília. As faixas não podem se sobrepor. Para mudar uma pausa, desative a antiga e cadastre a nova. Batidas antigas mantêm o nome original.</p>
     {!loaded && <button className="text-button" onClick={load}>Carregar pausas</button>}
     {loaded && rules.length === 0 && <p className="empty">Nenhuma pausa cadastrada. Defina as faixas reais de almoço e café da sua equipe.</p>}
-    {rules.map(rule => <article className="employee-card" key={rule.id}><div><strong>{rule.name}</strong><p>{rule.starts_at}–{rule.ends_at} · a partir de {rule.effective_from.split('-').reverse().join('/')}</p><p>{!rule.active ? 'Desativada' : rule.effective_from > today() ? 'Agendada' : 'Ativa'}</p></div>{rule.active && <div className="employee-actions"><button className="text-button" disabled={busy} onClick={() => { setEditing(rule.id); setForm({ name: rule.name, starts_at: rule.starts_at, ends_at: rule.ends_at, effective_from: rule.effective_from }) }}>Editar</button><button className="text-button" disabled={busy} onClick={() => deactivate(rule.id)}>Desativar</button></div>}</article>)}
+    {rules.map(rule => <article className="employee-card" key={rule.id}><div><strong>{rule.name}</strong><p>{rule.starts_at}–{rule.ends_at} · a partir de {rule.effective_from.split('-').reverse().join('/')}</p><p>{!rule.active ? 'Excluída' : rule.effective_from > today() ? 'Agendada' : 'Ativa'}</p></div>{rule.active && <div className="employee-actions"><button className="text-button" disabled={busy} onClick={() => { setEditing(rule.id); setForm({ name: rule.name, starts_at: rule.starts_at, ends_at: rule.ends_at, effective_from: rule.effective_from }) }}>Editar</button><button className="text-button danger-link" disabled={busy} onClick={() => deactivate(rule.id)}>Excluir</button></div>}</article>)}
   </section>
 }

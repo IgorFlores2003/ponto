@@ -93,6 +93,7 @@ td small { display: block; margin-top: 5px; color: #789185; }
 .schedule-editor label { display: grid; gap: 5px; color: #527566; font-size: 11px; }
 .schedule-editor input { min-width: 0; width: 100%; padding: 8px; border: 1px solid #cbded2; border-radius: 8px; font: inherit; }
 .schedule-editor button { padding: 8px 10px; border-radius: 8px; background: #e1f3e7; color: #23573d; }
+.danger-link { color: #a24636 !important; }
 @media (max-width: 700px) { .worker-times { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 420px) { .dashboard-filters { grid-template-columns: 1fr; } .worker-heading { flex-direction: column; } .worker-times strong { font-size: 20px; } .live-dashboard .metric strong { font-size: 17px; } }
 .password-field { display: block; position: relative; min-width: 0; width: 100%; }

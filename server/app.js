@@ -86,9 +86,10 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     const { name, registration, department = '', job_title = '', photo = null, target_hours = 8, work_time, break_time, pin } = req.body || {}
     const work_minutes = parseDuration(work_time ?? '08:00')
     const break_minutes = parseDuration(break_time ?? '01:00')
-    if (!validPhoto(photo) || typeof name !== 'string' || !name.trim() || name.trim().length > 120 || typeof registration !== 'string' || !registration.trim() || registration.trim().length > 40 || typeof job_title !== 'string' || job_title.trim().length > 120 || typeof department !== 'string' || department.trim().length > 120 || (work_minutes === null || work_minutes < 1 || work_minutes > 1440) || (break_minutes === null || break_minutes < 0 || break_minutes > 720) || typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'Informe nome, matrícula, serviço (HH:MM), intervalo (HH:MM) e PIN de 4 números.' })
+    if (!validPhoto(photo) || typeof name !== 'string' || !name.trim() || name.trim().length > 120 || (registration !== undefined && (typeof registration !== 'string' || registration.trim().length > 40)) || typeof job_title !== 'string' || job_title.trim().length > 120 || typeof department !== 'string' || department.trim().length > 120 || (work_minutes === null || work_minutes < 1 || work_minutes > 1440) || (break_minutes === null || break_minutes < 0 || break_minutes > 720) || typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'Informe nome, função, serviço (HH:MM), intervalo (HH:MM) e PIN de 4 números.' })
     try {
-      const [{ id }] = await db('employees').insert({ name: name.trim(), registration: registration.trim(), department: department.trim(), job_title: job_title.trim(), photo: photo || null, target_hours: work_minutes / 60, work_minutes, break_minutes, pin_digest: await pinDigest(db, pin), created_at: new Date().toISOString() }).returning('id')
+      const generatedRegistration = registration?.trim() || `FUNC-${Date.now()}-${randomBytes(3).toString('hex')}`
+      const [{ id }] = await db('employees').insert({ name: name.trim(), registration: generatedRegistration, department: department.trim(), job_title: job_title.trim(), photo: photo || null, target_hours: work_minutes / 60, work_minutes, break_minutes, pin_digest: await pinDigest(db, pin), created_at: new Date().toISOString() }).returning('id')
       res.status(201).json(publicEmployee(await db('employees').where({ id }).first()))
     } catch (error) { if (['SQLITE_CONSTRAINT_UNIQUE', '23505'].includes(error.code)) return res.status(409).json({ error: 'Matrícula ou PIN já utilizado por outro funcionário.' }); throw error }
   })
@@ -107,6 +108,13 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     res.status(201).json(result)
   })
   app.post('/api/break-rules/:id/deactivate', async (req, res) => {
+    const id = Number(req.params.id)
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Pausa inválida.' })
+    const count = await db('break_rules').where({ id }).update({ active: false })
+    if (!count) return res.status(404).json({ error: 'Pausa não encontrada.' })
+    res.sendStatus(204)
+  })
+  app.post('/api/break-rules/:id/delete', async (req, res) => {
     const id = Number(req.params.id)
     if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Pausa inválida.' })
     const count = await db('break_rules').where({ id }).update({ active: false })
