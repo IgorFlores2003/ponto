@@ -1,83 +1,128 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-type EntryKind = 'Entrada' | 'Saída' | 'Início do intervalo' | 'Fim do intervalo'
-type Entry = { id: number; date: string; time: string; kind: EntryKind }
-
-const storedEntries = localStorage.getItem('ponto-entries')
-const initialEntries: Entry[] = storedEntries ? JSON.parse(storedEntries) : []
-const initialName = localStorage.getItem('ponto-name') || 'Funcionário'
-const initialTarget = Number(localStorage.getItem('ponto-target') || 8)
-
-function dateKey(date = new Date()) { return date.toLocaleDateString('pt-BR') }
-function formatDate(date = new Date()) { return new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }).format(date) }
-function formatTime(date = new Date()) { return new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(date) }
-function minutesBetween(start: string, end: string) { const [sh, sm] = start.split(':').map(Number); const [eh, em] = end.split(':').map(Number); return Math.max(0, eh * 60 + em - (sh * 60 + sm)) }
-function formatMinutes(total: number) { return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}` }
+type Employee = { id: number; name: string; registration: string; department: string; target_hours: number; has_pin: boolean }
+type Entry = { id: number; kind: string; occurred_at: string }
+type ReportRow = Employee & { minutes: number; punches: number; status: string }
+type Report = { from: string; to: string; generated_at: string; rows: ReportRow[] }
+const base = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
+class ApiError extends Error { constructor(message: string, public status: number) { super(message) } }
+async function api<T>(path: string, body?: unknown, token?: string): Promise<T> {
+  const response = await fetch(base + path, { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) })
+  if (response.status === 204) return undefined as T
+  const data = await response.json()
+  if (!response.ok) throw new ApiError(data.error || 'Falha na operação.', response.status)
+  return data
+}
+const day = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+const timestamp = (value: string) => new Date(value).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+const hours = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+const message = (error: unknown) => error instanceof Error ? error.message : 'Não foi possível acessar o servidor.'
 
 export default function App() {
-  const [entries, setEntries] = useState<Entry[]>(initialEntries)
-  const [name, setName] = useState(initialName)
-  const [targetHours, setTargetHours] = useState(initialTarget)
-  const [activeTab, setActiveTab] = useState<'inicio' | 'historico' | 'configuracoes'>('inicio')
-  const [notice, setNotice] = useState('')
-  const [historyDate, setHistoryDate] = useState(dateKey())
-  const today = dateKey()
-  const todayEntries = entries.filter((entry) => entry.date === today)
-  const lastEntry = todayEntries[todayEntries.length - 1]
-  const isWorking = lastEntry?.kind === 'Entrada' || lastEntry?.kind === 'Fim do intervalo'
-  const isOnBreak = lastEntry?.kind === 'Início do intervalo'
-
-  const workedMinutes = useMemo(() => {
-    let total = 0
-    let start: string | null = null
-    for (const entry of todayEntries) {
-      if (entry.kind === 'Entrada' || entry.kind === 'Fim do intervalo') start = entry.time
-      if ((entry.kind === 'Saída' || entry.kind === 'Início do intervalo') && start) { total += minutesBetween(start, entry.time); start = null }
-    }
-    return total
-  }, [todayEntries])
-
-  const selectedHistory = entries.filter((entry) => entry.date === historyDate).reverse()
-  const historyTotal = entries.filter((entry) => entry.date === historyDate).reduce((total, entry, index, dayEntries) => {
-    if (entry.kind !== 'Saída' && entry.kind !== 'Início do intervalo') return total
-    const previous = dayEntries[index - 1]
-    return previous && (previous.kind === 'Entrada' || previous.kind === 'Fim do intervalo') ? total + minutesBetween(previous.time, entry.time) : total
-  }, 0)
-
-  function showNotice(message: string) { setNotice(message); window.setTimeout(() => setNotice(''), 3500) }
-  function saveEntries(next: Entry[]) { setEntries(next); localStorage.setItem('ponto-entries', JSON.stringify(next)) }
-  function register(kind: EntryKind) { const entry = { id: Date.now(), date: today, time: formatTime(), kind }; saveEntries([...entries, entry]); showNotice(`${kind} registrada às ${entry.time}.`) }
-  function removeEntry(id: number) { saveEntries(entries.filter((entry) => entry.id !== id)); showNotice('Registro removido.') }
-  function saveProfile(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); const cleanName = name.trim() || 'Funcionário'; setName(cleanName); localStorage.setItem('ponto-name', cleanName); localStorage.setItem('ponto-target', String(targetHours)); showNotice('Configurações salvas.') }
-  function clearAll() { if (!window.confirm('Excluir todos os registros deste aparelho?')) return; saveEntries([]); showNotice('Todos os registros foram excluídos.') }
-
-  return <main className="app-shell"><div className="phone-frame">
-    <header className="topbar"><div className="brand-mark">PD</div><div><span className="eyebrow">PONTO DIGITAL</span><h1>Olá, {name}</h1></div><div className="avatar">{name.slice(0, 2).toUpperCase()}</div></header>
-    {notice && <div className="toast" role="status"><span>✓</span>{notice}</div>}
-
-    {activeTab === 'inicio' && <>
-      <section className="date-row"><div><span className="eyebrow">SEU DIA</span><h2>{formatDate()}</h2></div><span className="status-pill"><i />{isOnBreak ? 'Em intervalo' : isWorking ? 'Em expediente' : 'Fora do expediente'}</span></section>
-      <section className="clock-card"><div className="fingerprint"><span>◷</span></div><p className="eyebrow light">CONTROLE DE JORNADA</p><h2>{isOnBreak ? 'Você está no intervalo' : isWorking ? 'Expediente em andamento' : 'Pronto para começar?'}</h2><p className="muted light-muted">Registre seus horários com um toque. Os dados ficam salvos neste aparelho.</p><div className="action-grid">
-        {!isWorking && !isOnBreak && <button className="primary-button" onClick={() => register('Entrada')}>Registrar entrada</button>}
-        {isWorking && <><button className="primary-button" onClick={() => register('Saída')}>Registrar saída</button><button className="secondary-button" onClick={() => register('Início do intervalo')}>Iniciar intervalo</button></>}
-        {isOnBreak && <button className="primary-button" onClick={() => register('Fim do intervalo')}>Voltar do intervalo</button>}
-      </div><small>Registro manual, rápido e sem senha</small></section>
-      <section className="metrics"><div className="metric"><span className="metric-icon green">◷</span><div><strong>{formatMinutes(workedMinutes)}</strong><span>Horas hoje</span></div></div><div className="metric"><span className="metric-icon orange">↗</span><div><strong>{todayEntries.length}</strong><span>Registros</span></div></div></section>
-      <section className="section-head"><div><span className="eyebrow">JORNADA</span><h2>Resumo de hoje</h2></div><span className="secure-label">Meta {targetHours}h</span></section>
-      <section className="security-card"><div className="security-icon">✓</div><div><h3>{workedMinutes >= targetHours * 60 ? 'Meta cumprida' : `${formatMinutes(Math.max(0, targetHours * 60 - workedMinutes))} restantes`}</h3><p>{todayEntries.length ? 'Seus registros estão salvos neste dispositivo.' : 'Nenhum registro feito hoje.'}</p></div><button className="text-button" onClick={() => setActiveTab('historico')}>Detalhes <span>›</span></button></section>
-      <section className="section-head recent-head"><div><span className="eyebrow">HOJE</span><h2>Registros recentes</h2></div><button className="text-button" onClick={() => setActiveTab('historico')}>Ver todos <span>›</span></button></section>
-      <div className="entry-list">{todayEntries.length === 0 ? <p className="empty">Nenhum registro ainda.</p> : todayEntries.slice(-4).reverse().map((entry) => <EntryRow key={entry.id} entry={entry} onRemove={removeEntry} />)}</div>
-    </>}
-
-    {activeTab === 'historico' && <section className="history-page"><button className="back-button" onClick={() => setActiveTab('inicio')}>‹ Voltar</button><span className="eyebrow">ACOMPANHAMENTO</span><h2>Histórico de pontos</h2><p className="muted">Consulte e remova registros salvos neste aparelho.</p><input className="date-input" type="date" value={historyDate.split('/').reverse().join('-')} onChange={(event) => { const [year, month, day] = event.target.value.split('-'); setHistoryDate(`${day}/${month}/${year}`) }} /><div className="history-summary"><strong>{formatMinutes(historyTotal)}</strong><span>Horas trabalhadas no dia</span></div><div className="history-list">{selectedHistory.length === 0 ? <p className="empty">Nenhum registro nesta data.</p> : selectedHistory.map((entry) => <EntryRow key={entry.id} entry={entry} onRemove={removeEntry} />)}</div></section>}
-
-    {activeTab === 'configuracoes' && <section className="history-page"><button className="back-button" onClick={() => setActiveTab('inicio')}>‹ Voltar</button><span className="eyebrow">PREFERÊNCIAS</span><h2>Configurações</h2><p className="muted">Personalize sua jornada e mantenha seus dados organizados.</p><form className="settings-form" onSubmit={saveProfile}><label>Nome do funcionário<input value={name} onChange={(event) => setName(event.target.value)} /></label><label>Meta diária de horas<input type="number" min="1" max="24" value={targetHours} onChange={(event) => setTargetHours(Number(event.target.value))} /></label><button className="primary-button" type="submit">Salvar configurações</button></form><section className="security-card"><div className="security-icon">▤</div><div><h3>Armazenamento local</h3><p>{entries.length} registro(s) salvo(s) neste dispositivo.</p></div></section><button className="danger-button" onClick={clearAll}>Excluir todos os registros</button><p className="muted">Ponto Digital · versão 1.0.0</p></section>}
-
-    <nav className="bottom-nav"><button className={activeTab === 'inicio' ? 'nav-active' : ''} onClick={() => setActiveTab('inicio')}><span>⌂</span>Início</button><button className={activeTab === 'historico' ? 'nav-active' : ''} onClick={() => setActiveTab('historico')}><span>▤</span>Histórico</button><button className={activeTab === 'configuracoes' ? 'nav-active' : ''} onClick={() => setActiveTab('configuracoes')}><span>⚙</span>Configurações</button></nav>
-  </div></main>
+  const [admin, setAdmin] = useState(location.hash.startsWith('#/admin'))
+  useEffect(() => { const change = () => setAdmin(location.hash.startsWith('#/admin')); window.addEventListener('hashchange', change); return () => window.removeEventListener('hashchange', change) }, [])
+  return <main className="app-shell"><div className={`phone-frame ${admin ? 'admin-frame' : ''}`}><header className="topbar"><div className="brand-mark">PD</div><div><span className="eyebrow">PONTO DIGITAL</span><h1>{admin ? 'Área administrativa' : 'Terminal de ponto'}</h1></div></header>{admin ? <Admin /> : <Terminal />}</div></main>
 }
-
-function EntryRow({ entry, onRemove }: { entry: Entry; onRemove: (id: number) => void }) {
-  const isStart = entry.kind === 'Entrada' || entry.kind === 'Fim do intervalo'
-  return <div className="entry"><span className={`entry-dot ${isStart ? 'entry-in' : 'entry-out'}`}>{isStart ? '↘' : '↗'}</span><div><strong>{entry.kind}</strong><span>{entry.date}, {entry.time}</span></div><button className="entry-remove" aria-label={`Remover ${entry.kind}`} onClick={() => onRemove(entry.id)}>×</button></div>
+function Terminal() {
+  const [pin, setPin] = useState('')
+  const [kind, setKind] = useState('auto')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [receipt, setReceipt] = useState<{ employee_name: string; kind: string; occurred_at: string } | null>(null)
+  const input = useRef<HTMLInputElement>(null)
+  const lock = useRef(false)
+  const pending = useRef<string | null>(null)
+  useEffect(() => { if (!receipt) return; const timer = setTimeout(() => setReceipt(null), 6000); return () => clearTimeout(timer) }, [receipt])
+  async function punch(event: React.FormEvent) {
+    event.preventDefault(); if (lock.current) return
+    lock.current = true; setBusy(true); setError(''); setReceipt(null)
+    pending.current ||= crypto.randomUUID()
+    try {
+      setReceipt(await api('/terminal/punch', { pin, kind, request_id: pending.current }))
+      pending.current = null; setKind('auto')
+    } catch (err) { setError(message(err)); if (err instanceof ApiError) pending.current = null }
+    finally { setPin(''); setBusy(false); lock.current = false; setTimeout(() => input.current?.focus(), 0) }
+  }
+  return <><section className="clock-card"><div className="fingerprint">◷</div><span className="eyebrow light">REGISTRE SUA JORNADA</span><h2>Digite seu PIN</h2><p className="muted light-muted">Seu PIN identifica você. Após cada batida, o terminal fica pronto para a próxima pessoa.</p>
+    <form onSubmit={punch} className="pin-form"><label htmlFor="terminal-pin">PIN de 4 números</label><input ref={input} id="terminal-pin" type="password" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} minLength={4} required autoComplete="off" autoFocus value={pin} disabled={busy} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} />
+      <label htmlFor="punch-kind">Tipo de batida</label><select id="punch-kind" value={kind} disabled={busy} onChange={e => { setKind(e.target.value); pending.current = null }}><option value="auto">Automático: entrada / saída / retorno</option><option value="Entrada">Entrada</option><option value="Saída">Saída</option><option value="Início do intervalo">Iniciar intervalo</option><option value="Fim do intervalo">Voltar do intervalo</option></select>
+      <button className="primary-button" disabled={busy || pin.length !== 4}>{busy ? 'Registrando…' : 'Marcar ponto'}</button></form><small>No automático, a próxima batida encerra o expediente.<br />Para fazer uma pausa, selecione “Iniciar intervalo”.</small></section>
+    {error && <p className="error-message feedback" role="alert">{error}</p>}
+    {receipt && <section className="receipt" role="status"><h2>✓ {receipt.employee_name}</h2><p>{receipt.kind} registrada</p><strong>{timestamp(receipt.occurred_at)}</strong><p>Digite o PIN novamente para a próxima batida.</p></section>}
+    <p className="muted terminal-footer">Horário de Brasília · <a href="#/admin">Acesso do administrador</a></p></>
+}
+function Admin() {
+  const [token, setToken] = useState<string | null>(null)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  async function login(event: React.FormEvent) {
+    event.preventDefault(); setBusy(true); setError('')
+    try { const result = await api<{ token: string }>('/auth/login', { username, password }); setToken(result.token); setPassword('') }
+    catch (err) { setError(message(err)); setPassword('') } finally { setBusy(false) }
+  }
+  if (token) return <AdminPanel token={token} onExit={() => setToken(null)} />
+  return <section className="login-page"><span className="eyebrow">ACESSO RESTRITO</span><h2>Entrar como administrador</h2><p className="muted">Gerencie funcionários e acompanhe as horas da equipe.</p><form className="settings-form" onSubmit={login}><label>Usuário<input required autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} /></label><label>Senha<input required type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} /></label><button className="primary-button" disabled={busy}>{busy ? 'Entrando…' : 'Entrar'}</button></form>{error && <p role="alert" className="error-message">{error}</p>}<a href="#/terminal">Voltar ao terminal de ponto</a></section>
+}
+function AdminPanel({ token, onExit }: { token: string; onExit: () => void }) {
+  const [tab, setTab] = useState<'dashboard' | 'funcionarios' | 'relatorios'>('dashboard')
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [report, setReport] = useState<Report | null>(null)
+  const [from, setFrom] = useState(day())
+  const [to, setTo] = useState(day())
+  const [selected, setSelected] = useState('')
+  const [entries, setEntries] = useState<Entry[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [version, setVersion] = useState(0)
+  const [form, setForm] = useState({ name: '', registration: '', department: '', target_hours: '8', pin: '' })
+  const [pinEmployee, setPinEmployee] = useState('')
+  const [newPin, setNewPin] = useState('')
+  const sequence = useRef(0)
+  function fail(err: unknown) { if (err instanceof ApiError && err.status === 401) onExit(); else setError(message(err)) }
+  useEffect(() => {
+    let active = true; setLoading(true); setError(''); setReport(null)
+    Promise.all([api<Employee[]>('/employees', undefined, token), api<Report>(`/reports?from=${from}&to=${to}`, undefined, token)]).then(([people, data]) => { if (active) { setEmployees(people); setReport(data) } }).catch(err => { if (active) fail(err) }).finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [token, from, to, version])
+  useEffect(() => {
+    const current = ++sequence.current; setEntries([])
+    if (!selected) { setLoadingHistory(false); return }
+    setLoadingHistory(true)
+    api<Entry[]>(`/employees/${selected}/entries`, undefined, token).then(data => { if (current === sequence.current) setEntries(data) }).catch(err => { if (current === sequence.current) fail(err) }).finally(() => { if (current === sequence.current) setLoadingHistory(false) })
+    return () => { sequence.current++ }
+  }, [selected, token, version])
+  useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 5000); return () => clearTimeout(timer) }, [notice])
+  async function saveEmployee(event: React.FormEvent) {
+    event.preventDefault(); setBusy(true); setError('')
+    try { await api('/employees', { ...form, target_hours: Number(form.target_hours) }, token); setForm({ name: '', registration: '', department: '', target_hours: '8', pin: '' }); setVersion(v => v + 1); setNotice('Funcionário cadastrado.') }
+    catch (err) { fail(err) } finally { setBusy(false) }
+  }
+  async function savePin(event: React.FormEvent) {
+    event.preventDefault(); setBusy(true); setError('')
+    try { await api(`/employees/${pinEmployee}/pin`, { pin: newPin }, token); setNewPin(''); setPinEmployee(''); setVersion(v => v + 1); setNotice('PIN atualizado.') } catch (err) { fail(err) } finally { setBusy(false) }
+  }
+  async function logout() { setBusy(true); try { await api('/auth/logout', {}, token); onExit() } catch (err) { fail(err) } finally { setBusy(false) } }
+  function exportCsv() {
+    if (!report) return
+    const quote = (value: unknown) => `"${String(value).replace(/^[=+@\-\t\r]/, "'$&").replace(/"/g, '""')}"`
+    const rows = [['Funcionário', 'Matrícula', 'Departamento', 'De', 'Até', 'Horas trabalhadas', 'Batidas'], ...report.rows.filter(row => !selected || String(row.id) === selected).map(row => [row.name, row.registration, row.department, report.from, report.to, hours(row.minutes), row.punches])]
+    const url = URL.createObjectURL(new Blob(['\uFEFF' + rows.map(row => row.map(quote).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8;' }))
+    const link = document.createElement('a'); link.href = url; link.download = `horas-${report.from}-${report.to}.csv`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+  const rows = report?.rows.filter(row => !selected || String(row.id) === selected) || []
+  const visibleEntries = entries.filter(entry => { const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(entry.occurred_at)); return date >= from && date <= to }).slice().reverse()
+  return <><div className="admin-toolbar"><a href="#/terminal">Terminal de ponto</a><button className="text-button" disabled={busy} onClick={logout}>Sair da conta</button></div><nav className="admin-tabs">{(['dashboard', 'funcionarios', 'relatorios'] as const).map(key => <button key={key} className={tab === key ? 'selected' : ''} onClick={() => setTab(key)}>{key === 'dashboard' ? 'Dashboard' : key === 'funcionarios' ? 'Funcionários' : 'Relatórios'}</button>)}</nav>
+    {error && <div role="alert" className="error-message">{error}<button onClick={() => setVersion(v => v + 1)}>Tentar novamente</button></div>}{notice && <p role="status" className="receipt">{notice}</p>}
+    {tab === 'funcionarios' ? <><h2>Cadastrar funcionário</h2><form className="settings-form employee-form" onSubmit={saveEmployee}><label>Nome completo<input required maxLength={120} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label><label>Matrícula<input required maxLength={40} value={form.registration} onChange={e => setForm({ ...form, registration: e.target.value })} /></label><label>Departamento<input maxLength={120} value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} /></label><label>Jornada diária (horas)<input required type="number" min="1" max="24" step="0.5" value={form.target_hours} onChange={e => setForm({ ...form, target_hours: e.target.value })} /></label><label>PIN exclusivo de 4 números<input required type="password" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} autoComplete="new-password" value={form.pin} onChange={e => setForm({ ...form, pin: e.target.value.replace(/\D/g, '') })} /></label><button className="primary-button" disabled={busy}>Cadastrar funcionário</button></form><h2>Equipe ({employees.length})</h2>
+      {employees.map(employee => <div className="employee-card" key={employee.id}><div><strong>{employee.name}</strong><p>{employee.registration} · {employee.department || 'Sem departamento'} · {employee.target_hours}h/dia</p><p>{employee.has_pin ? 'PIN cadastrado' : 'PIN pendente: defina para liberar as batidas'}</p></div><div className="employee-actions"><button className="text-button" onClick={() => { setSelected(String(employee.id)); setTab('relatorios') }}>Histórico</button><button className="text-button" onClick={() => { setPinEmployee(String(employee.id)); setNewPin('') }}>Definir PIN</button></div></div>)}
+      {pinEmployee && <form className="settings-form pin-reset" onSubmit={savePin}><h3>Definir PIN de {employees.find(e => String(e.id) === pinEmployee)?.name}</h3><label>Novo PIN<input required type="password" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} autoComplete="new-password" value={newPin} onChange={e => setNewPin(e.target.value.replace(/\D/g, ''))} /></label><button className="primary-button" disabled={busy}>Salvar PIN</button><button type="button" className="text-button" onClick={() => setPinEmployee('')}>Cancelar</button></form>}
+    </> : <><div className="section-head"><h2>{tab === 'dashboard' ? 'Dashboard de horas' : 'Relatório de horas'}</h2><button className="text-button" disabled={loading} onClick={() => setVersion(v => v + 1)}>Atualizar</button></div><div className="report-filters"><label>De<input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label><label>Até<input type="date" value={to} onChange={e => setTo(e.target.value)} /></label></div>
+      {loading ? <p className="empty" role="status">Carregando dados…</p> : report && <>{tab === 'dashboard' ? <><section className="metrics dashboard-metrics"><div className="metric"><div><strong>{hours(report.rows.reduce((sum, row) => sum + row.minutes, 0))}</strong><span>Horas da equipe no período</span></div></div><div className="metric"><div><strong>{report.rows.reduce((sum, row) => sum + row.punches, 0)}</strong><span>Batidas no período</span></div></div><div className="metric"><div><strong>{report.rows.filter(row => row.status === 'Em expediente').length}</strong><span>Em expediente agora</span></div></div><div className="metric"><div><strong>{report.rows.length}</strong><span>Funcionários cadastrados</span></div></div></section><h3>Horas por funcionário</h3><div className="hours-chart">{report.rows.map(row => <div key={row.id}><div className="chart-label"><span>{row.name}</span><strong>{hours(row.minutes)}</strong></div><meter min="0" max={Math.max(1, ...report.rows.map(r => r.minutes))} value={row.minutes} aria-label={`Horas de ${row.name}`} /><p className="muted">{row.status}</p></div>)}</div></> : <><label className="employee-selector">Funcionário<select value={selected} onChange={e => setSelected(e.target.value)}><option value="">Todos os funcionários</option>{employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name} · {employee.registration}</option>)}</select></label><button className="primary-button export-button" onClick={exportCsv}>Exportar CSV</button><div className="table-scroll"><table><thead><tr><th>Funcionário</th><th>Horas</th><th>Batidas</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td>{row.name}<small>{row.registration}</small></td><td>{hours(row.minutes)}</td><td>{row.punches}</td></tr>)}</tbody></table></div>{selected && <section className="history-page"><h3>Batidas no período</h3>{loadingHistory ? <p className="empty">Carregando batidas…</p> : visibleEntries.length === 0 ? <p className="empty">Nenhuma batida no período.</p> : visibleEntries.map(entry => <div className="entry" key={entry.id}><span className="entry-dot entry-in">◷</span><div><strong>{entry.kind}</strong><span>{timestamp(entry.occurred_at)}</span></div></div>)}</section>}</>}
+      {report.rows.length === 0 && <p className="empty">Cadastre funcionários para começar.</p>}<p className="muted report-note">Inclui jornadas em andamento e desconta intervalos. Horário de Brasília. Atualizado em {timestamp(report.generated_at)}.</p></>}
+    </>}</>
 }
