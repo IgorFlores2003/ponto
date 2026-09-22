@@ -30,22 +30,54 @@ const message = (error: unknown) => error instanceof Error ? error.message : 'N�
 async function deliverFile(blob: Blob, filename: string) {
   if (Capacitor.isNativePlatform()) {
     try {
-      const base64 = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob) })
-      const saved = await Filesystem.writeFile({ path: filename, data: base64, directory: Directory.Cache, recursive: true })
-      await Share.share({ title: filename, text: 'Relatório Ponto Digital', url: saved.uri, dialogTitle: 'Compartilhar relatório' })
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+
+        reader.onload = () => {
+          const result = String(reader.result)
+          resolve(result.split(',')[1] || '')
+        }
+
+        reader.onerror = () => reject(reader.error)
+        reader.readAsDataURL(blob)
+      })
+
+      await Filesystem.writeFile({
+        path: `Download/${filename}`,
+        data: base64,
+        directory: Directory.ExternalStorage,
+        recursive: true
+      })
+
+      window.dispatchEvent(
+        new CustomEvent('file-downloaded', {
+          detail: { filename }
+        })
+      )
+
       return
-    } catch { /* fallback do navegador abaixo */ }
+    } catch (error) {
+      console.error('Erro ao baixar arquivo:', error)
+
+      window.dispatchEvent(
+        new CustomEvent('file-download-error')
+      )
+
+      return
+    }
   }
-  const file = new File([blob], filename, { type: blob.type })
-  const shareNavigator = navigator as Navigator & { canShare?: (data: { files: File[] }) => boolean; share?: (data: { files: File[]; title?: string }) => Promise<void> }
-  if (shareNavigator.share && shareNavigator.canShare?.({ files: [file] })) {
-    try { await shareNavigator.share({ files: [file], title: filename }); return } catch (error) { if (error instanceof DOMException && error.name === 'AbortError') return }
-  }
+
   const url = URL.createObjectURL(blob)
-  const link = document.createElement('a'); link.href = url; link.download = filename; link.target = '_blank'; link.rel = 'noopener'
-  document.body.appendChild(link); link.click(); link.remove()
-  window.setTimeout(() => window.open(url, '_blank', 'noopener,noreferrer'), 500)
-  window.setTimeout(() => URL.revokeObjectURL(url), 30000)
+
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+
+  URL.revokeObjectURL(url)
 }
 
 export default function App() {
@@ -256,6 +288,10 @@ function AdminPanel({ token, onExit }: { token: string; onExit: () => void }) {
   const [photoBusy, setPhotoBusy] = useState(false)
   const [pinEmployee, setPinEmployee] = useState('')
   const [newPin, setNewPin] = useState('')
+  const [downloadNotice, setDownloadNotice] = useState<{
+  type: 'success' | 'error'
+  filename?: string
+} | null>(null)
   const sequence = useRef(0)
   function fail(err: unknown) { if (err instanceof ApiError && err.status === 401) onExit(); else setError(message(err)) }
   useEffect(() => {
@@ -276,6 +312,40 @@ function AdminPanel({ token, onExit }: { token: string; onExit: () => void }) {
     document.addEventListener('visibilitychange', resume)
     return () => { active = false; clearInterval(timer); document.removeEventListener('visibilitychange', resume) }
   }, [token, from, to, version])
+  useEffect(() => {
+  function downloaded(event: Event) {
+    const customEvent = event as CustomEvent<{ filename: string }>
+
+    setDownloadNotice({
+      type: 'success',
+      filename: customEvent.detail.filename
+    })
+  }
+
+  function downloadError() {
+    setDownloadNotice({
+      type: 'error'
+    })
+  }
+
+  window.addEventListener('file-downloaded', downloaded)
+  window.addEventListener('file-download-error', downloadError)
+
+  return () => {
+    window.removeEventListener('file-downloaded', downloaded)
+    window.removeEventListener('file-download-error', downloadError)
+  }
+}, [])
+
+useEffect(() => {
+  if (!downloadNotice) return
+
+  const timer = window.setTimeout(() => {
+    setDownloadNotice(null)
+  }, 4000)
+
+  return () => window.clearTimeout(timer)
+}, [downloadNotice])
   useEffect(() => {
     const current = ++sequence.current; setEntries([])
     if (!selected) { setLoadingHistory(false); return }
@@ -327,7 +397,48 @@ async function logout() {
   }
   const rows = report?.rows.filter(row => !selected || String(row.id) === selected) || []
   const visibleEntries = entries.filter(entry => { const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(entry.occurred_at)); return date >= from && date <= to }).slice().reverse()
-  return <><div className="admin-toolbar"><a href="#/terminal">Terminal de ponto</a><button className="text-button" disabled={busy} onClick={logout}>Sair da conta</button></div><nav className="admin-tabs">{(['dashboard', 'funcionarios', 'relatorios', 'pausas'] as const).map(key => <button key={key} className={tab === key ? 'selected' : ''} onClick={() => setTab(key)}>{key === 'dashboard' ? 'Dashboard' : key === 'funcionarios' ? 'Funcionários' : key === 'pausas' ? 'Pausas' : 'Relatórios'}</button>)}</nav>
+  return <>
+  {downloadNotice && (
+    <div
+      className={`download-toast ${
+        downloadNotice.type === 'error' ? 'download-toast-error' : ''
+      }`}
+      role="status"
+    >
+      <div className="download-toast-icon">
+        {downloadNotice.type === 'success' ? '✓' : '!'}
+      </div>
+
+      <div className="download-toast-content">
+        <strong>
+          {downloadNotice.type === 'success'
+            ? 'Relatório baixado'
+            : 'Erro ao baixar'}
+        </strong>
+
+        <span>
+          {downloadNotice.type === 'success'
+            ? 'Arquivo salvo em Downloads'
+            : 'Não foi possível salvar o relatório.'}
+        </span>
+
+        {downloadNotice.filename && (
+          <small>{downloadNotice.filename}</small>
+        )}
+      </div>
+
+      <button
+        type="button"
+        className="download-toast-close"
+        onClick={() => setDownloadNotice(null)}
+        aria-label="Fechar"
+      >
+        ×
+      </button>
+    </div>
+  )}
+
+  <div className="admin-toolbar"><a href="#/terminal">Terminal de ponto</a><button className="text-button" disabled={busy} onClick={logout}>Sair da conta</button></div><nav className="admin-tabs">{(['dashboard', 'funcionarios', 'relatorios', 'pausas'] as const).map(key => <button key={key} className={tab === key ? 'selected' : ''} onClick={() => setTab(key)}>{key === 'dashboard' ? 'Dashboard' : key === 'funcionarios' ? 'Funcionários' : key === 'pausas' ? 'Pausas' : 'Relatórios'}</button>)}</nav>
     {error && <div role="alert" className="error-message">{error}<button onClick={() => setVersion(v => v + 1)}>Tentar novamente</button></div>}{notice && <p role="status" className="receipt">{notice}</p>}
     {tab === 'pausas' ? <BreakSettings request={<T,>(path: string, body?: unknown) => api<T>(path, body, token)} onError={fail} /> : tab === 'funcionarios' ? <><h2>Cadastrar funcionário</h2><form className="settings-form employee-form" onSubmit={saveEmployee}><label>Nome completo<input required maxLength={120} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label><label>Função<input required maxLength={120} placeholder="Ex.: cozinheiro, atendente" value={form.job_title} onChange={e => setForm({ ...form, job_title: e.target.value })} /></label><label>Tempo de serviço por dia<input required type="time" step="60" value={form.work_time} onChange={e => setForm({ ...form, work_time: e.target.value })} /></label><label>Tempo esperado de almoço/intervalo<input required type="time" step="60" value={form.break_time} onChange={e => setForm({ ...form, break_time: e.target.value })} /></label><label>PIN exclusivo de 4 números<PasswordInput required inputMode="numeric" pattern="[0-9]{4}" maxLength={4} autoComplete="new-password" value={form.pin} onChange={e => setForm({ ...form, pin: e.target.value.replace(/\D/g, '') })} /></label><EmployeePhoto name={form.name || 'Funcionário'} photo={form.photo} disabled={busy} onBusyChange={setPhotoBusy} onChange={photo => setForm(current => ({ ...current, photo }))} /><button className="primary-button" disabled={busy || photoBusy}>Cadastrar funcionário</button></form><h2>Equipe ({employees.length})</h2>
       {employees.map(employee => <div className="employee-card" key={employee.id}><div><strong>{employee.name}</strong><EmployeePhoto name={employee.name} photo={employee.photo} onChange={async photo => { try { await api(`/employees/${employee.id}/photo`, { photo }, token); setEmployees(current => current.map(item => item.id === employee.id ? { ...item, photo } : item)); setVersion(v => v + 1); setNotice('Foto atualizada.') } catch (err) { fail(err); throw err } }} /><EmployeeScheduleEditor employee={employee} token={token} onSaved={() => { setVersion(v => v + 1); setNotice('Funcionário atualizado.') }} onError={fail} /><p>{employee.has_pin ? 'PIN cadastrado' : 'PIN pendente: defina para liberar as batidas'}</p></div><div className="employee-actions"><button className="text-button" onClick={() => { setSelected(String(employee.id)); setVersion(v => v + 1); setTab('relatorios') }}>Histórico</button><button className="text-button" onClick={() => { setPinEmployee(String(employee.id)); setNewPin('') }}>Definir PIN</button></div></div>)}
