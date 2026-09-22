@@ -86,18 +86,155 @@ function Terminal() {
     <p className="muted terminal-footer">Horário de Brasília · <a href="#/admin">Acesso do administrador</a></p></>
 }
 function Admin() {
-  const [token, setToken] = useState<string | null>(null)
+  const REMEMBER_DURATION = 8 * 60 * 60 * 1000 // 8 horas
+
+  const [token, setToken] = useState<string | null>(() => {
+    const savedToken = localStorage.getItem('admin_token')
+    const expiresAt = localStorage.getItem('admin_token_expires')
+
+    if (!savedToken || !expiresAt) {
+      return null
+    }
+
+    if (Date.now() >= Number(expiresAt)) {
+      localStorage.removeItem('admin_token')
+      localStorage.removeItem('admin_token_expires')
+      return null
+    }
+
+    return savedToken
+  })
+
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
   async function login(event: React.FormEvent) {
-    event.preventDefault(); setBusy(true); setError('')
-    try { const result = await api<{ token: string }>('/auth/login', { username, password }); setToken(result.token); setPassword('') }
-    catch (err) { setError(message(err)); setPassword('') } finally { setBusy(false) }
+    event.preventDefault()
+
+    setBusy(true)
+    setError('')
+
+    try {
+      const result = await api<{ token: string }>(
+        '/auth/login',
+        {
+          username,
+          password
+        }
+      )
+
+      setToken(result.token)
+
+      if (rememberMe) {
+        const expiresAt = Date.now() + REMEMBER_DURATION
+
+        localStorage.setItem('admin_token', result.token)
+        localStorage.setItem(
+          'admin_token_expires',
+          String(expiresAt)
+        )
+      } else {
+        localStorage.removeItem('admin_token')
+        localStorage.removeItem('admin_token_expires')
+      }
+
+      setPassword('')
+    } catch (err) {
+      setError(message(err))
+      setPassword('')
+    } finally {
+      setBusy(false)
+    }
   }
-  if (token) return <AdminPanel token={token} onExit={() => setToken(null)} />
-  return <section className="login-page"><span className="eyebrow">ACESSO RESTRITO</span><h2>Entrar como administrador</h2><p className="muted">Gerencie funcionários e acompanhe as horas da equipe.</p><form className="settings-form" onSubmit={login}><label>Usuário<input required autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} /></label><label>Senha<PasswordInput required autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} /></label><button className="primary-button" disabled={busy}>{busy ? 'Entrando…' : 'Entrar'}</button></form>{error && <p role="alert" className="error-message">{error}</p>}<a href="#/terminal">Voltar ao terminal de ponto</a></section>
+
+  function exitAdmin() {
+    localStorage.removeItem('admin_token')
+    localStorage.removeItem('admin_token_expires')
+    setToken(null)
+  }
+
+  if (token) {
+    return (
+      <AdminPanel
+        token={token}
+        onExit={exitAdmin}
+      />
+    )
+  }
+
+  return (
+    <section className="login-page">
+      <span className="eyebrow">
+        ACESSO RESTRITO
+      </span>
+
+      <h2>Entrar como administrador</h2>
+
+      <p className="muted">
+        Gerencie funcionários e acompanhe as horas da equipe.
+      </p>
+
+      <form
+        className="settings-form"
+        onSubmit={login}
+      >
+        <label>
+          Usuário
+
+          <input
+            required
+            autoComplete="username"
+            value={username}
+            onChange={e => setUsername(e.target.value)}
+          />
+        </label>
+
+        <label>
+          Senha
+
+          <PasswordInput
+            required
+            autoComplete="current-password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+          />
+        </label>
+
+        <label className="remember-me">
+          <input
+            type="checkbox"
+            checked={rememberMe}
+            onChange={e => setRememberMe(e.target.checked)}
+          />
+
+          <span>Lembrar de mim por 8 horas</span>
+        </label>
+
+        <button
+          className="primary-button"
+          disabled={busy}
+        >
+          {busy ? 'Entrando…' : 'Entrar'}
+        </button>
+      </form>
+
+      {error && (
+        <p
+          role="alert"
+          className="error-message"
+        >
+          {error}
+        </p>
+      )}
+
+      <a href="#/terminal">
+        Voltar ao terminal de ponto
+      </a>
+    </section>
+  )
 }
 function AdminPanel({ token, onExit }: { token: string; onExit: () => void }) {
   const [tab, setTab] = useState<'dashboard' | 'funcionarios' | 'relatorios' | 'pausas'>('dashboard')
@@ -156,8 +293,18 @@ function AdminPanel({ token, onExit }: { token: string; onExit: () => void }) {
     event.preventDefault(); setBusy(true); setError('')
     try { await api(`/employees/${pinEmployee}/pin`, { pin: newPin }, token); setNewPin(''); setPinEmployee(''); setVersion(v => v + 1); setNotice('PIN atualizado.') } catch (err) { fail(err) } finally { setBusy(false) }
   }
-  async function logout() { setBusy(true); try { await api('/auth/logout', {}, token); onExit() } catch (err) { fail(err) } finally { setBusy(false) } }
-  function exportCsv() {
+  
+async function logout() {
+  setBusy(true)
+  try {
+    await api('/auth/logout', {}, token)
+  } catch (err) {
+    fail(err)
+  } finally {
+    setBusy(false)
+    onExit()
+  }
+}  function exportCsv() {
     if (!report) return
     const quote = (value: unknown) => `"${String(value).replace(/^[=+@\-\t\r]/, "'$&").replace(/"/g, '""')}"`
     const rows = [['Funcionário', 'Matrícula', 'Departamento', 'Função', 'De', 'Até', 'Horas previstas', 'Horas trabalhadas', 'Horas devidas', 'Horas de intervalo', 'Batidas'], ...report.rows.filter(row => !selected || String(row.id) === selected).map(row => [row.name, row.registration, row.department, row.job_title, report.from, report.to, hours(Math.floor(row.expected_seconds / 60)), hours(row.minutes), hours(Math.floor(row.debt_seconds / 60)), hours(Math.floor(row.break_seconds / 60)), row.punches])]

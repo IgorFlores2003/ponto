@@ -162,3 +162,22 @@ td small { display: block; margin-top: 5px; color: #789185; }
 .export-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
 .export-actions .primary-button, .export-actions .secondary-button { width: auto; margin: 0; padding: 11px 16px; }
 .pin-help { display: block; color: #d7f1df; font-size: 11px; line-height: 1.4; }
+.remember-me {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.remember-me input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.remember-me span {
+  font-size: 14px;
+}
