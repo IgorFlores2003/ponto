@@ -124,7 +124,7 @@ A troca de configuração não copia funcionários ou batidas já existentes no 
 
 ## Publicar na Vercel
 
-O projeto inclui `vercel.json` para servir o frontend Vite e encaminhar todas as rotas `/api/*` à função Express curinga em `api/[...path].js`. O backend reutiliza o pool PostgreSQL e não executa migrations ou seeds durante requisições. Mantenha as migrations atualizadas com `npm run db:migrate` antes de publicar mudanças de schema.
+O projeto inclui `vercel.json` para servir o frontend Vite e encaminhar todas as rotas `/api/*` à função Express em `api/index.js`, preservando o caminho original para o Express. O backend reutiliza o pool PostgreSQL e não executa migrations ou seeds durante requisições. Mantenha as migrations atualizadas com `npm run db:migrate` antes de publicar mudanças de schema.
 
 Na Vercel, use a raiz do repositório e Node.js 22.x. Configure `DATABASE_URL`, `DATABASE_CA_PATH=server/certs/supabase.crt` e `NODE_ENV=production`. O certificado é incluído na função; arquivos `.env` e bancos locais são excluídos do upload. Não configure `VITE_API_URL` para o frontend web: ele usa `/api` no mesmo domínio. Para compilar Android, configure essa variável localmente com a URL pública da Vercel seguida de `/api`.
 
