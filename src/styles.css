@@ -300,4 +300,49 @@ td small { display: block; margin-top: 5px; color: #789185; }
     opacity: 1;
     transform: translate(-50%, 0);
   }
-}
+}.workdays-field { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 12px; padding: 10px; border: 1px solid #dce8e1; border-radius: 12px; }
+.workdays-field legend { padding: 0 5px; color: #527566; font-size: 12px; font-weight: 700; }
+.settings-form .workdays-field label { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+.workdays-field input { width: auto; }
+.schedule-editor .workdays-field { grid-column: 1 / -1; }
+.workdays-field { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 12px; padding: 10px; border: 1px solid #dce8e1; border-radius: 12px; }
+.workdays-field legend { padding: 0 5px; color: #527566; font-size: 12px; font-weight: 700; }
+.settings-form .workdays-field label { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+.workdays-field input { width: auto; }
+.schedule-editor .workdays-field { grid-column: 1 / -1; }
+.calendar-toolbar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; margin: 8px 0 12px; }
+.calendar-toolbar h2 { text-align: center; text-transform: capitalize; font-size: 18px; }
+.calendar-toolbar button { padding: 9px 10px; border-radius: 9px; color: #23573d; background: #e1f3e7; font-size: 12px; }
+.calendar-hint { margin: 10px 0 18px; color: #668174; font-size: 12px; line-height: 1.5; }
+.calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.calendar-weekday { padding: 7px 0; text-align: center; color: #668174; font-size: 10px; }
+.calendar-day { min-width: 0; min-height: 78px; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 6px 4px; border: 1px solid #e2ebe5; border-radius: 8px; background: #fff; color: #315847; text-align: left; }
+.calendar-day > span { font-size: 12px; font-weight: 700; }
+.calendar-day b { color: #317455; font-size: 9px; }
+.calendar-day small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8px; }
+.calendar-day.outside-month { opacity: .4; }
+.calendar-day.selected-day { border: 2px solid #317455; background: #edf7f0; }
+.event-off { color: #9a4f3d; }
+.event-extra { color: #317455; }
+.calendar-day-detail { margin-top: 22px; padding: 18px; border-radius: 16px; background: #f5f8f6; }
+.calendar-day-detail h3 { text-transform: capitalize; font-size: 18px; }
+.calendar-day-detail > div:first-child p { margin-top: 5px; color: #668174; font-size: 12px; }
+.calendar-people { margin: 15px 0; padding: 0; list-style: none; }
+.calendar-people li, .calendar-event { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #dce8e1; font-size: 12px; }
+.calendar-people li span { color: #668174; }
+.calendar-events h4, .calendar-event-form h4 { margin: 16px 0 6px; color: #315847; font-size: 13px; }
+.calendar-event-form { margin-top: 18px; }
+.calendar-event-form select { width: 100%; padding: 11px; border: 1px solid #dce8e1; border-radius: 10px; background: white; color: #315847; font: inherit; }
+@media (max-width: 520px) { .admin-tabs { flex-wrap: wrap; } .admin-tabs button { min-width: 28%; } .calendar-day { min-height: 68px; } }
+.modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: rgba(11, 30, 23, .58); }
+.confirm-dialog { width: min(100%, 440px); padding: 24px; border-radius: 18px; background: #fff; box-shadow: 0 22px 70px rgba(0,0,0,.25); }
+.confirm-dialog h2 { color: #143f31; font-size: 20px; }
+.confirm-dialog p { margin: 12px 0 22px; color: #527566; font-size: 14px; line-height: 1.6; }
+.confirm-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.confirm-dialog-actions button { width: auto; padding: 11px 16px; border-radius: 10px; font-size: 13px; font-weight: 700; }
+.confirm-dialog-actions .secondary-button { color: #315847; background: #eaf1ed; }
+.danger-confirm-button { color: #fff; background: #a63c3c; }
+.dashboard-filters { grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; }
+.dashboard-clear-filters { min-height: 42px; justify-self: start; }
+@media (max-width: 700px) { .dashboard-filters { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 420px) { .dashboard-filters { grid-template-columns: 1fr; } }

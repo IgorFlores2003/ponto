@@ -5,13 +5,10 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/index.js": {
+    "api/[...path].js": {
       "includeFiles": "server/certs/**",
       "excludeFiles": "{.env,.env.*,data/**,android/**,server/*.test.js,server/seeds/**}",
       "maxDuration": 60
     }
-  },
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/index" }
-  ]
+  }
 }
