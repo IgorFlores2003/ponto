@@ -5,6 +5,7 @@ import { matchingBreak, validRule, localDateTime } from './breaks.js'
 import { randomBytes } from 'node:crypto'
 import { hashPassword, verifyPassword, hashToken, pinDigest, rateLimit } from './auth.js'
 import { reportFor, validDate } from './reports.js'
+import { applyCors } from './cors.js'
 function validWorkdays(days) { return Array.isArray(days) && days.length > 0 && days.every(day => Number.isInteger(day) && day >= 0 && day <= 6) && new Set(days).size === days.length }
 export const transitions = { 'Entrada': ['Saída do almoço', 'Saída', 'Início do intervalo'], 'Saída do almoço': ['Entrada do almoço'], 'Entrada do almoço': ['Saída', 'Início do intervalo'], 'Início do intervalo': ['Fim do intervalo'], 'Fim do intervalo': ['Saída', 'Início do intervalo'], 'Saída': ['Entrada'] }
 const columns = ['id', 'name', 'registration', 'department', 'job_title', 'photo', 'target_hours', 'work_minutes', 'break_minutes', 'monthly_minutes', 'workdays', 'created_at']
@@ -13,15 +14,9 @@ export function createApp(db, { clock = () => new Date() } = {}) {
   const app = express()
   const dummyHash = hashPassword(randomBytes(24).toString('hex'))
   app.use((req, res, next) => {
-    const allowed = (process.env.CORS_ORIGINS || 'http://localhost,https://localhost,capacitor://localhost').split(',')
-    if (allowed.includes(req.headers.origin)) {
-      res.setHeader('Access-Control-Allow-Origin', req.headers.origin)
-      res.setHeader('Vary', 'Origin')
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-    }
+    const allowed = applyCors(req, res)
     res.setHeader('Cache-Control', 'no-store')
-    if (req.method === 'OPTIONS') return res.sendStatus(204)
+    if (req.method === 'OPTIONS') return allowed ? res.sendStatus(204) : res.status(403).json({ error: 'Origem não permitida.' })
     next()
   })
   app.use(express.json({ limit: '400kb' }))
