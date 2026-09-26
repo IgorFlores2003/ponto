@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { FiX, FiCheckCircle, FiAlertTriangle, FiAlertCircle, FiCheck, FiClock } from 'react-icons/fi'
 import { api, timestamp, type Employee, type Entry } from './types'
 
@@ -23,6 +23,11 @@ export default function PunchPhotoModal({
   const [currentEntry, setCurrentEntry] = useState(entry)
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState('')
+
+  // Mantém currentEntry sincronizado se a batida for atualizada em background
+  useEffect(() => {
+    setCurrentEntry(entry)
+  }, [entry])
 
   const title = `${currentEntry.kind}${currentEntry.break_name ? ` · ${currentEntry.break_name}` : ''}`
   const time = timestamp(currentEntry.occurred_at)
@@ -54,7 +59,7 @@ export default function PunchPhotoModal({
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"
+        className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-[#edf0ee] pb-3">
@@ -74,18 +79,18 @@ export default function PunchPhotoModal({
           </button>
         </div>
 
-        {/* Comparação de Fotos */}
+        {/* Comparação de Fotos - Imagens inteiras sem corte */}
         {employee?.photo ? (
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div>
               <span className="mb-1 block text-center text-[11px] font-bold text-[#315847]">
                 Foto na batida
               </span>
-              <div className="flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-[#cbded2] bg-neutral-900 shadow-inner">
+              <div className="flex h-56 sm:h-64 w-full items-center justify-center overflow-hidden rounded-xl border border-[#cbded2] bg-neutral-950 p-1 shadow-inner">
                 <img
                   src={currentEntry.punch_photo!}
                   alt="Foto na batida"
-                  className="h-full w-full object-cover"
+                  className="max-h-full max-w-full object-contain"
                 />
               </div>
             </div>
@@ -93,21 +98,21 @@ export default function PunchPhotoModal({
               <span className="mb-1 block text-center text-[11px] font-bold text-[#315847]">
                 Foto cadastrada
               </span>
-              <div className="flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-[#cbded2] bg-neutral-900 shadow-inner">
+              <div className="flex h-56 sm:h-64 w-full items-center justify-center overflow-hidden rounded-xl border border-[#cbded2] bg-neutral-950 p-1 shadow-inner">
                 <img
                   src={employee.photo}
                   alt="Foto cadastrada do funcionário"
-                  className="h-full w-full object-cover"
+                  className="max-h-full max-w-full object-contain"
                 />
               </div>
             </div>
           </div>
         ) : (
-          <div className="mt-4 flex max-h-[320px] items-center justify-center overflow-hidden rounded-xl border border-[#cbded2] bg-neutral-900">
+          <div className="mt-4 flex h-64 sm:h-80 w-full items-center justify-center overflow-hidden rounded-xl border border-[#cbded2] bg-neutral-950 p-1">
             <img
               src={currentEntry.punch_photo!}
               alt={`Foto da batida ${title}`}
-              className="max-h-[320px] w-full object-contain"
+              className="max-h-full max-w-full object-contain"
             />
           </div>
         )}
@@ -164,19 +169,21 @@ export default function PunchPhotoModal({
           <p className="mt-2 text-center text-xs text-[#b91c1c]">{error}</p>
         )}
 
-        {/* Ações do Administrador */}
+        {/* Ações do Administrador - Somente solicita confirmação em casos de divergência */}
         <div className="mt-4 grid gap-2">
-          {token && !currentEntry.admin_confirmed && currentEntry.divergence_status !== 'confirmed' && (
-            <button
-              type="button"
-              onClick={handleConfirm}
-              disabled={confirming}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#1e5944] py-2.5 text-xs font-bold text-white transition hover:bg-[#143f31] disabled:opacity-50"
-            >
-              <FiCheckCircle size={15} />
-              {confirming ? 'Confirmando…' : 'Administrador confirma batida'}
-            </button>
-          )}
+          {token &&
+            (currentEntry.divergence_status === 'divergence' || currentEntry.divergence_status === 'no_face') &&
+            !currentEntry.admin_confirmed && (
+              <button
+                type="button"
+                onClick={handleConfirm}
+                disabled={confirming}
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#1e5944] py-2.5 text-xs font-bold text-white transition hover:bg-[#143f31] disabled:opacity-50"
+              >
+                <FiCheckCircle size={15} />
+                {confirming ? 'Confirmando…' : 'Administrador confirma divergência e valida batida'}
+              </button>
+            )}
 
           <button
             type="button"

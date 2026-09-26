@@ -115,6 +115,21 @@ export default function AdminPanel({ token, onExit }: Props) {
     return () => { sequence.current++ }
   }, [selected, token, version])
 
+  // Atualiza automaticamente o histórico se houver batidas com análise da IA pendente
+  useEffect(() => {
+    if (!selected || !token) return
+    const hasPending = entries.some(e => e.divergence_status === 'pending')
+    if (!hasPending) return
+    const timer = window.setInterval(() => {
+      api<Entry[]>(`/employees/${selected}/entries`, undefined, token)
+        .then(data => {
+          setEntries(data)
+        })
+        .catch(() => {})
+    }, 2000)
+    return () => clearInterval(timer)
+  }, [selected, token, entries])
+
   useEffect(() => {
     if (!notice) return
     const timer = setTimeout(() => setNotice(''), 5000)

@@ -56,70 +56,70 @@ export default function Dashboard({ report, receivedAt, syncError, onHistory, fi
         {rows.length} de {report.rows.length} funcionários · totais do período selecionado
       </p>
 
-      <section className="mt-3.5 mb-7 grid grid-cols-2 gap-3 min-[700px]:grid-cols-4">
-        <div className="flex items-start gap-3 rounded-[17px] border border-[#e2ebe5] bg-white p-3.5">
+      <section className="mt-3.5 mb-7 grid grid-cols-2 gap-2.5 sm:gap-3.5 min-[700px]:grid-cols-4">
+        <div className="flex min-w-0 items-start gap-2.5 sm:gap-3 rounded-[17px] border border-[#e2ebe5] bg-white p-3 sm:p-3.5 overflow-hidden shadow-xs">
           <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#e1f3e7] text-[#246841]">
             <FiClock size={18} aria-hidden="true" />
           </div>
-          <div className="min-w-0">
-            <span className="block text-xs text-[#527566]">Tempo em serviço</span>
-            <strong className="block font-['Manrope',sans-serif] text-xl font-bold tabular-nums text-[#143f31] max-[420px]:text-base">
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <span className="block truncate text-[11px] sm:text-xs text-[#527566]">Tempo em serviço</span>
+            <strong className="block truncate font-['Manrope',sans-serif] text-base sm:text-xl font-bold tabular-nums text-[#143f31]">
               {clock(rows.reduce((sum, row) => sum + row.work, 0))}
             </strong>
-            <span className="block text-[10px] text-[#82958b]">Intervalos descontados</span>
+            <span className="block truncate text-[9px] sm:text-[10px] text-[#82958b]" title="Intervalos descontados">Intervalos descontados</span>
           </div>
         </div>
 
-        <div className="flex items-start gap-3 rounded-[17px] border border-[#e2ebe5] bg-white p-3.5">
+        <div className="flex min-w-0 items-start gap-2.5 sm:gap-3 rounded-[17px] border border-[#e2ebe5] bg-white p-3 sm:p-3.5 overflow-hidden shadow-xs">
           <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#fff0d7] text-[#8b5a18]">
             <FiCoffee size={18} aria-hidden="true" />
           </div>
-          <div className="min-w-0">
-            <span className="block text-xs text-[#527566]">Tempo total em pausas</span>
-            <strong className="block font-['Manrope',sans-serif] text-xl font-bold tabular-nums text-[#143f31] max-[420px]:text-base">
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <span className="block truncate text-[11px] sm:text-xs text-[#527566]">Tempo em pausas</span>
+            <strong className="block truncate font-['Manrope',sans-serif] text-base sm:text-xl font-bold tabular-nums text-[#143f31]">
               {clock(rows.reduce((sum, row) => sum + row.pause, 0))}
             </strong>
-            <span className="block text-[10px] text-[#82958b]">Separado do serviço</span>
+            <span className="block truncate text-[9px] sm:text-[10px] text-[#82958b]" title="Separado do serviço">Separado do serviço</span>
           </div>
         </div>
 
-        <div className="flex items-start gap-3 rounded-[17px] border border-[#e2ebe5] bg-white p-3.5">
+        <div className="flex min-w-0 items-start gap-2.5 sm:gap-3 rounded-[17px] border border-[#e2ebe5] bg-white p-3 sm:p-3.5 overflow-hidden shadow-xs">
           <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#e1f3e7] text-[#246841]">
             <FiUserCheck size={18} aria-hidden="true" />
           </div>
-          <div className="min-w-0">
-            <span className="block text-xs text-[#527566]">Em serviço agora</span>
-            <strong className="block font-['Manrope',sans-serif] text-xl font-bold tabular-nums text-[#143f31] max-[420px]:text-base">
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <span className="block truncate text-[11px] sm:text-xs text-[#527566]">Em serviço agora</span>
+            <strong className="block truncate font-['Manrope',sans-serif] text-base sm:text-xl font-bold tabular-nums text-[#143f31]">
               {rows.filter(row => row.status === 'Em expediente').length}
             </strong>
-            <span className="block text-[10px] text-[#82958b]">Dos funcionários filtrados</span>
+            <span className="block truncate text-[9px] sm:text-[10px] text-[#82958b]" title="Dos funcionários filtrados">Dos filtrados</span>
           </div>
         </div>
 
-        <div className="flex items-start gap-3 rounded-[17px] border border-[#e2ebe5] bg-white p-3.5">
+        <div className="flex min-w-0 items-start gap-2.5 sm:gap-3 rounded-[17px] border border-[#e2ebe5] bg-white p-3 sm:p-3.5 overflow-hidden shadow-xs">
           <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#fff0d7] text-[#8b5a18]">
             <FiPauseCircle size={18} aria-hidden="true" />
           </div>
-          <div className="min-w-0">
-            <span className="block text-xs text-[#527566]">Em pausa agora</span>
-            <strong className="block font-['Manrope',sans-serif] text-xl font-bold tabular-nums text-[#143f31] max-[420px]:text-base">
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <span className="block truncate text-[11px] sm:text-xs text-[#527566]">Em pausa agora</span>
+            <strong className="block truncate font-['Manrope',sans-serif] text-base sm:text-xl font-bold tabular-nums text-[#143f31]">
               {rows.filter(row => row.status === 'Em intervalo').length}
             </strong>
-            <span className="block text-[10px] text-[#82958b]">Dos funcionários filtrados</span>
+            <span className="block truncate text-[9px] sm:text-[10px] text-[#82958b]" title="Dos funcionários filtrados">Dos filtrados</span>
           </div>
         </div>
 
-        <div className="col-span-full flex items-start gap-3 rounded-[17px] border border-[#f0d4b5] bg-[#fffaf3] p-3.5 sm:col-span-2">
+        <div className="col-span-full flex min-w-0 items-start gap-2.5 sm:gap-3 rounded-[17px] border border-[#f0d4b5] bg-[#fffaf3] p-3 sm:p-3.5 overflow-hidden sm:col-span-2 shadow-xs">
           <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#fbe9e3] text-[#a24636]">
             <FiAlertCircle size={18} aria-hidden="true" />
           </div>
-          <div className="min-w-0">
-            <span className="block text-xs text-[#815b1c]">Horas devidas no mês</span>
-            <strong className="block font-['Manrope',sans-serif] text-xl font-bold tabular-nums text-[#a24636] max-[420px]:text-base">
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <span className="block truncate text-[11px] sm:text-xs text-[#815b1c]">Horas devidas no mês</span>
+            <strong className="block truncate font-['Manrope',sans-serif] text-base sm:text-xl font-bold tabular-nums text-[#a24636]">
               {clock(rows.reduce((sum, row) => sum + row.debt, 0))}
             </strong>
-            <span className="block text-[10px] text-[#82958b]">
-              {report.from.endsWith('-01') ? 'Previstas menos trabalhadas desde o início do mês' : 'Previstas menos trabalhadas no período filtrado'}
+            <span className="block truncate text-[9px] sm:text-[10px] text-[#82958b]" title={report.from.endsWith('-01') ? 'Previstas menos trabalhadas desde o início do mês' : 'Previstas menos trabalhadas no período filtrado'}>
+              {report.from.endsWith('-01') ? 'Previstas menos trabalhadas no mês' : 'Previstas menos trabalhadas no período'}
             </span>
           </div>
         </div>
@@ -131,7 +131,7 @@ export default function Dashboard({ report, receivedAt, syncError, onHistory, fi
       <div className="mt-4 grid gap-3.5">
         {rows.map(row => (
           <article
-            className="relative rounded-[18px] border border-[#dce8e1] bg-white p-5 transition duration-150 hover:border-[#4b916d] hover:shadow-[0_4px_16px_rgba(20,63,49,0.08)]"
+            className="relative min-w-0 overflow-hidden rounded-[18px] border border-[#dce8e1] bg-white p-4 sm:p-5 transition duration-150 hover:border-[#4b916d] hover:shadow-[0_4px_16px_rgba(20,63,49,0.08)]"
             key={row.id}
           >
             <button
@@ -140,16 +140,16 @@ export default function Dashboard({ report, receivedAt, syncError, onHistory, fi
               aria-label={`Ver histórico de ${row.name}`}
               onClick={() => onHistory(row.id)}
             />
-            <div className="flex flex-wrap items-start justify-between gap-3 max-[420px]:flex-col">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
                 <Avatar name={row.name} photo={row.photo} />
-                <div>
-                  <h3 className="text-[15px] font-semibold text-[#143f31]">{row.name}</h3>
-                  <p className="text-[13px] text-[#527566]">{row.job_title || 'Função não informada'}</p>
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate text-sm sm:text-[15px] font-semibold text-[#143f31]">{row.name}</h3>
+                  <p className="truncate text-xs sm:text-[13px] text-[#527566]">{row.job_title || 'Função não informada'}</p>
                 </div>
               </div>
               <span
-                className={`max-w-full shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold ${
+                className={`max-w-full shrink-0 truncate rounded-lg px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold ${
                   row.status === 'Em intervalo'
                     ? 'border border-[#e8b454] bg-[#ffe0a3] text-[#633a00]'
                     : row.status === 'Em expediente'
@@ -161,43 +161,43 @@ export default function Dashboard({ report, receivedAt, syncError, onHistory, fi
               </span>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-3 min-[701px]:grid-cols-4">
-              <div className="rounded-xl bg-[#f0f8f3] p-3">
-                <span className="block text-xs text-[#527566]">Previstas</span>
-                <strong className="block text-xl font-bold tabular-nums text-[#143f31]">{clock(row.expected_seconds)}</strong>
+            <div className="mt-3.5 grid grid-cols-2 gap-2 sm:gap-3 min-[701px]:grid-cols-4">
+              <div className="min-w-0 overflow-hidden rounded-xl bg-[#f0f8f3] p-2.5 sm:p-3">
+                <span className="block truncate text-[11px] sm:text-xs text-[#527566]">Previstas</span>
+                <strong className="block truncate text-base sm:text-xl font-bold tabular-nums text-[#143f31]">{clock(row.expected_seconds)}</strong>
               </div>
-              <div className="rounded-xl bg-[#fff7ec] p-3">
-                <span className="block text-xs text-[#527566]">Trabalhadas</span>
-                <strong className="block text-xl font-bold tabular-nums text-[#143f31]">{clock(row.work)}</strong>
+              <div className="min-w-0 overflow-hidden rounded-xl bg-[#fff7ec] p-2.5 sm:p-3">
+                <span className="block truncate text-[11px] sm:text-xs text-[#527566]">Trabalhadas</span>
+                <strong className="block truncate text-base sm:text-xl font-bold tabular-nums text-[#143f31]">{clock(row.work)}</strong>
               </div>
-              <div className="rounded-xl bg-[#fff7ec] p-3">
-                <span className="block text-xs text-[#527566]">Horas devidas</span>
-                <strong className={`block text-xl font-bold tabular-nums ${row.debt ? 'text-[#a24636]' : 'text-[#143f31]'}`}>{clock(row.debt)}</strong>
+              <div className="min-w-0 overflow-hidden rounded-xl bg-[#fff7ec] p-2.5 sm:p-3">
+                <span className="block truncate text-[11px] sm:text-xs text-[#527566]">Horas devidas</span>
+                <strong className={`block truncate text-base sm:text-xl font-bold tabular-nums ${row.debt ? 'text-[#a24636]' : 'text-[#143f31]'}`}>{clock(row.debt)}</strong>
               </div>
-              <div className="rounded-xl bg-[#fff7ec] p-3">
-                <span className="block text-xs text-[#527566]">Intervalo a mais</span>
-                <strong className={`block text-xl font-bold tabular-nums ${row.extraPause ? 'text-[#a24636]' : 'text-[#143f31]'}`}>{clock(row.extraPause)}</strong>
+              <div className="min-w-0 overflow-hidden rounded-xl bg-[#fff7ec] p-2.5 sm:p-3">
+                <span className="block truncate text-[11px] sm:text-xs text-[#527566]">Intervalo a mais</span>
+                <strong className={`block truncate text-base sm:text-xl font-bold tabular-nums ${row.extraPause ? 'text-[#a24636]' : 'text-[#143f31]'}`}>{clock(row.extraPause)}</strong>
               </div>
             </div>
 
             {row.pauses.length > 0 && (
-              <dl className="mt-3.5 grid gap-1.5 text-[13px]">
+              <dl className="mt-3 grid gap-1 text-xs sm:text-[13px]">
                 {row.pauses.map(item => (
-                  <div key={item.name} className="flex justify-between gap-3 border-b border-[#edf0ee] py-1.5">
-                    <dt className="text-[#527566]">{item.name}</dt>
-                    <dd className="m-0 font-bold tabular-nums text-[#143f31]">{clock(item.seconds)}</dd>
+                  <div key={item.name} className="flex min-w-0 items-center justify-between gap-3 border-b border-[#edf0ee] py-1.5">
+                    <dt className="min-w-0 truncate text-[#527566]">{item.name}</dt>
+                    <dd className="m-0 shrink-0 font-bold tabular-nums text-[#143f31]">{clock(item.seconds)}</dd>
                   </div>
                 ))}
               </dl>
             )}
 
             {row.current_since && (
-              <p className="mt-3 text-xs text-[#527566]">
+              <p className="mt-2.5 truncate text-[11px] sm:text-xs text-[#527566]">
                 {row.status === 'Em intervalo' ? (row.current_break_name || 'Intervalo') : 'Serviço'} desde {new Date(row.current_since).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
               </p>
             )}
 
-            <div className="mt-3.5 flex items-center gap-1 text-xs font-bold text-[#246841]">
+            <div className="mt-3 flex items-center gap-1 text-xs font-bold text-[#246841]">
               Ver histórico de batidas <FiChevronRight size={16} aria-hidden="true" />
             </div>
           </article>

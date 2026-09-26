@@ -36,6 +36,16 @@ export default function ReportTab({
 }: Props) {
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
 
+  // Sincroniza a batida selecionada caso ela seja atualizada em background pela IA
+  useMemo(() => {
+    if (selectedEntry) {
+      const match = entries.find(e => e.id === selectedEntry.id)
+      if (match && (match.divergence_status !== selectedEntry.divergence_status || match.admin_confirmed !== selectedEntry.admin_confirmed)) {
+        setSelectedEntry(match)
+      }
+    }
+  }, [entries, selectedEntry])
+
   const rows = useMemo(
     () => report.rows.filter(row => !selected || String(row.id) === selected),
     [report, selected],
