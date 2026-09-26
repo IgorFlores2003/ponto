@@ -6,9 +6,11 @@ import { randomBytes } from 'node:crypto'
 import { hashPassword, verifyPassword, hashToken, pinDigest, rateLimit } from './auth.js'
 import { reportFor, validDate } from './reports.js'
 import { applyCors } from './cors.js'
-function validWorkdays(days) { return Array.isArray(days) && days.length > 0 && days.every(day => Number.isInteger(day) && day >= 0 && day <= 6) && new Set(days).size === days.length }
+import { planScheduleEvents } from './schedule-events.js'
+import { scheduleForDate, monthlyScheduleMinutes } from '../shared/schedule.js'
+function validWorkdays(days) { return Array.isArray(days) && days.every(day => Number.isInteger(day) && day >= 0 && day <= 6) && new Set(days).size === days.length }
 export const transitions = { 'Entrada': ['Saída do almoço', 'Saída', 'Início do intervalo'], 'Saída do almoço': ['Entrada do almoço'], 'Entrada do almoço': ['Saída', 'Início do intervalo'], 'Início do intervalo': ['Fim do intervalo'], 'Fim do intervalo': ['Saída', 'Início do intervalo'], 'Saída': ['Entrada'] }
-const columns = ['id', 'name', 'registration', 'department', 'job_title', 'photo', 'target_hours', 'work_minutes', 'break_minutes', 'monthly_minutes', 'workdays', 'created_at']
+const columns = ['id', 'name', 'registration', 'department', 'job_title', 'photo', 'target_hours', 'work_minutes', 'break_minutes', 'workdays', 'created_at']
 const publicEmployee = employee => ({ ...Object.fromEntries(columns.map(key => [key, employee[key]])), active: !!employee.active, has_pin: !!employee.pin_digest })
 export function createApp(db, { clock = () => new Date() } = {}) {
   const app = express()
@@ -85,17 +87,23 @@ export function createApp(db, { clock = () => new Date() } = {}) {
   })
   app.get('/api/auth/me', async (req, res) => { const admin = await db('admins').where({ id: res.locals.session.admin_id }).first(); res.json({ username: admin.username }) })
   app.post('/api/auth/logout', async (req, res) => { await db('sessions').where({ token_hash: res.locals.session.token_hash }).delete(); res.sendStatus(204) })
-  app.get('/api/employees', async (req, res) => res.json((await db('employees').orderBy('name')).map(publicEmployee)))
+  app.get('/api/employees', async (req, res) => {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(clock())
+    const month = req.query.month ?? today.slice(0, 7)
+    if (typeof month !== 'string' || !validDate(`${month}-01`)) return res.status(400).json({ error: 'Informe um mês válido (AAAA-MM).' })
+    const events = await db('schedule_events').select('*', db.raw('CAST(event_date AS TEXT) AS event_date')).whereBetween('event_date', [`${month}-01`, `${month}-${new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)), 0)).getUTCDate()}`])
+    const employees = (await db('employees').orderBy('name')).map(publicEmployee)
+    res.json(employees.map(employee => ({ ...employee, monthly_month: month, monthly_minutes: monthlyScheduleMinutes(employee, month, events) })))
+  })
   app.post('/api/employees', async (req, res) => {
     const { name, registration, department = '', job_title = '', photo = null, target_hours = 8, work_time, break_time, pin } = req.body || {}
     const work_minutes = parseDuration(work_time ?? '08:00')
-    const monthly_minutes = parseDuration(req.body?.monthly_time ?? '176:00')
     const workdays = req.body?.workdays ?? [1, 2, 3, 4, 5]
     const break_minutes = parseDuration(break_time ?? '01:00')
-    if (!validPhoto(photo) || typeof name !== 'string' || !name.trim() || name.trim().length > 120 || (registration !== undefined && (typeof registration !== 'string' || registration.trim().length > 40)) || typeof job_title !== 'string' || job_title.trim().length > 120 || typeof department !== 'string' || department.trim().length > 120 || (work_minutes === null || work_minutes < 1 || work_minutes > 1440) || (break_minutes === null || break_minutes < 0 || break_minutes > 720) || (monthly_minutes === null || monthly_minutes < 1 || monthly_minutes > 100000) || !validWorkdays(workdays) || typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'Informe nome, função, serviço (HH:MM), intervalo (HH:MM) e PIN de 4 números.' })
+    if (!validPhoto(photo) || typeof name !== 'string' || !name.trim() || name.trim().length > 120 || (registration !== undefined && (typeof registration !== 'string' || registration.trim().length > 40)) || typeof job_title !== 'string' || job_title.trim().length > 120 || typeof department !== 'string' || department.trim().length > 120 || (work_minutes === null || work_minutes < 1 || work_minutes > 1440) || (break_minutes === null || break_minutes < 0 || break_minutes > 720) || !validWorkdays(workdays) || typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'Informe nome, função, serviço (HH:MM), intervalo (HH:MM) e PIN de 4 números.' })
     try {
       const generatedRegistration = registration?.trim() || `FUNC-${Date.now()}-${randomBytes(3).toString('hex')}`
-      const [{ id }] = await db('employees').insert({ name: name.trim(), registration: generatedRegistration, department: department.trim(), job_title: job_title.trim(), photo: photo || null, target_hours: work_minutes / 60, work_minutes, break_minutes, monthly_minutes, workdays: JSON.stringify(workdays), pin_digest: await pinDigest(db, pin), created_at: new Date().toISOString() }).returning('id')
+      const [{ id }] = await db('employees').insert({ name: name.trim(), registration: generatedRegistration, department: department.trim(), job_title: job_title.trim(), photo: photo || null, target_hours: work_minutes / 60, work_minutes, break_minutes, workdays: JSON.stringify(workdays), pin_digest: await pinDigest(db, pin), created_at: new Date().toISOString() }).returning('id')
       res.status(201).json(publicEmployee(await db('employees').where({ id }).first()))
     } catch (error) { if (['SQLITE_CONSTRAINT_UNIQUE', '23505'].includes(error.code)) return res.status(409).json({ error: 'Matrícula ou PIN já utilizado por outro funcionário.' }); throw error }
   })
@@ -137,24 +145,55 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     if (!count) return res.status(404).json({ error: 'Pausa não encontrada.' })
     res.json(await db('break_rules').where({ id }).first())
   })
-  const scheduleEventKinds = ['Feriado', 'Folga', 'Emenda', 'Trabalho extra']
+  const eventColumns = ['schedule_events.id', db.raw('CAST(schedule_events.event_date AS TEXT) AS event_date'), 'schedule_events.kind', 'schedule_events.title', 'schedule_events.employee_id', 'employees.name as employee_name', 'schedule_events.starts_at', 'schedule_events.ends_at', 'schedule_events.work_minutes', 'schedule_events.break_minutes']
   app.get('/api/schedule-events', async (req, res) => {
     const { from, to } = req.query
-    if (from !== undefined && (!validDate(from) || (to !== undefined && (!validDate(to) || from > to)))) return res.status(400).json({ error: 'Informe um período válido.' })
+    if ((from !== undefined && !validDate(from)) || (to !== undefined && !validDate(to)) || (from && to && from > to)) return res.status(400).json({ error: 'Informe um período válido.' })
     const query = db('schedule_events').leftJoin('employees', 'schedule_events.employee_id', 'employees.id')
-      .select('schedule_events.id', 'schedule_events.event_date', 'schedule_events.kind', 'schedule_events.title', 'schedule_events.employee_id', 'employees.name as employee_name')
+      .select(eventColumns)
       .orderBy('schedule_events.event_date').orderBy('schedule_events.id')
     if (from) query.where('schedule_events.event_date', '>=', from)
     if (to) query.where('schedule_events.event_date', '<=', to)
     res.json(await query)
   })
   app.post('/api/schedule-events', async (req, res) => {
-    const { event_date, kind, title, employee_id = null } = req.body || {}
-    if (!validDate(event_date) || !scheduleEventKinds.includes(kind) || typeof title !== 'string' || !title.trim() || title.trim().length > 120 || (employee_id !== null && (!Number.isSafeInteger(Number(employee_id)) || Number(employee_id) <= 0))) return res.status(400).json({ error: 'Informe data, tipo e descrição válidos.' })
+    let planned
+    try { planned = planScheduleEvents(req.body || {}) }
+    catch (error) { return res.status(400).json({ error: error.message }) }
+    const employee_id = planned[0].employee_id
     if (employee_id !== null && !await db('employees').where({ id: employee_id }).first()) return res.status(404).json({ error: 'Funcionário não encontrado.' })
-    const [{ id }] = await db('schedule_events').insert({ event_date, kind, title: title.trim(), employee_id, created_at: new Date().toISOString() }).returning('id')
-    const event = await db('schedule_events').leftJoin('employees', 'schedule_events.employee_id', 'employees.id').select('schedule_events.id', 'schedule_events.event_date', 'schedule_events.kind', 'schedule_events.title', 'schedule_events.employee_id', 'employees.name as employee_name').where('schedule_events.id', id).first()
-    res.status(201).json(event)
+    const created = await db.transaction(async trx => {
+      const ids = []
+      for (const event of planned) {
+        const [{ id }] = await trx('schedule_events').insert({ ...event, created_at: new Date().toISOString() }).returning('id')
+        ids.push(id)
+      }
+      return trx('schedule_events').leftJoin('employees', 'schedule_events.employee_id', 'employees.id').select(eventColumns).whereIn('schedule_events.id', ids).orderBy('schedule_events.event_date')
+    })
+    res.status(201).json(req.body?.repeat ? created : created[0])
+  })
+  app.post('/api/schedule-day', async (req, res) => {
+    const { event_date, assignments } = req.body || {}
+    if (!validDate(event_date) || !Array.isArray(assignments) || assignments.length > 1000 ||
+      assignments.some(item => !item || !Number.isSafeInteger(item.employee_id) || item.employee_id <= 0 || typeof item.working !== 'boolean') ||
+      new Set(assignments.map(item => item.employee_id)).size !== assignments.length) {
+      return res.status(400).json({ error: 'Informe uma data e uma seleção de funcionários válidas.' })
+    }
+    const result = await db.transaction(async trx => {
+      const employees = await trx('employees').where({ active: true })
+      if (employees.length !== assignments.length || employees.some(employee => !assignments.some(item => item.employee_id === employee.id))) return null
+      const events = await trx('schedule_events').select('*', db.raw('CAST(event_date AS TEXT) AS event_date')).where({ event_date })
+      const ids = []
+      for (const employee of employees) {
+        const { working } = assignments.find(item => item.employee_id === employee.id)
+        if ((scheduleForDate(employee, event_date, events).workMinutes > 0) === working) continue
+        const [{ id }] = await trx('schedule_events').insert({ event_date, employee_id: employee.id, kind: working ? 'Trabalho' : 'Folga', title: 'Escala do dia', created_at: new Date().toISOString() }).returning('id')
+        ids.push(id)
+      }
+      return trx('schedule_events').leftJoin('employees', 'schedule_events.employee_id', 'employees.id').select(eventColumns).whereIn('schedule_events.id', ids)
+    })
+    if (result === null) return res.status(409).json({ error: 'A equipe mudou. Atualize a página e selecione novamente quem trabalha.' })
+    res.status(201).json(result)
   })
   app.post('/api/schedule-events/:id/delete', async (req, res) => {
     const id = Number(req.params.id)
@@ -168,7 +207,7 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     if (!validDate(from) || !validDate(to) || from > to || Date.parse(to) - Date.parse(from) > 366 * 86400000) return res.status(400).json({ error: 'Informe um período válido de até 367 dias.' })
     const employees = (await db('employees').orderBy('name')).map(publicEmployee)
     const entries = await db('entries').orderBy('id')
-    const events = await db('schedule_events').select('event_date', 'kind', 'employee_id')
+    const events = await db('schedule_events').select('id', db.raw('CAST(event_date AS TEXT) AS event_date'), 'kind', 'employee_id', 'starts_at', 'ends_at', 'work_minutes', 'break_minutes')
     res.json({ from, to, generated_at: new Date().toISOString(), rows: reportFor(employees, entries, from, to, Date.now(), events) })
   })
   app.use('/api/employees/:id', async (req, res, next) => {
@@ -204,12 +243,11 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     res.sendStatus(204)
   })
   app.post('/api/employees/:id/schedule', async (req, res) => {
-    const { department = '', job_title = '', work_time, break_time, monthly_time, workdays } = req.body || {}
+    const { department = '', job_title = '', work_time, break_time, workdays } = req.body || {}
     const work_minutes = parseDuration(work_time)
     const break_minutes = parseDuration(break_time)
-    const monthly_minutes = parseDuration(monthly_time)
-    if (typeof department !== 'string' || department.length > 120 || typeof job_title !== 'string' || job_title.length > 120 || work_minutes === null || work_minutes < 1 || work_minutes > 1440 || break_minutes === null || break_minutes < 0 || break_minutes > 720 || monthly_minutes === null || monthly_minutes < 1 || monthly_minutes > 100000 || !validWorkdays(workdays)) return res.status(400).json({ error: 'Informe função, departamento, serviço e intervalo válidos.' })
-    await db('employees').where({ id: res.locals.employeeId }).update({ department: department.trim(), job_title: job_title.trim(), target_hours: work_minutes / 60, work_minutes, break_minutes, monthly_minutes, workdays: JSON.stringify(workdays) })
+    if (typeof department !== 'string' || department.length > 120 || typeof job_title !== 'string' || job_title.length > 120 || work_minutes === null || work_minutes < 1 || work_minutes > 1440 || break_minutes === null || break_minutes < 0 || break_minutes > 720 || !validWorkdays(workdays)) return res.status(400).json({ error: 'Informe função, departamento, serviço e intervalo válidos.' })
+    await db('employees').where({ id: res.locals.employeeId }).update({ department: department.trim(), job_title: job_title.trim(), target_hours: work_minutes / 60, work_minutes, break_minutes, workdays: JSON.stringify(workdays) })
     res.sendStatus(204)
   })
   app.post('/api/employees/:id/job-title', async (req, res) => {

@@ -1,4 +1,4 @@
-import { brazilNationalHolidays } from '../shared/brazil-holidays.js'
+import { scheduleForDate } from '../shared/schedule.js'
 
 export function validDate(date) {
   return typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(date)) && new Date(date).toISOString().slice(0, 10) === date
@@ -12,13 +12,12 @@ export function reportFor(employees, entries, from, to, now = Date.now(), events
     .slice().sort((a, b) => Date.parse(a.occurred_at) - Date.parse(b.occurred_at) || Number(a.id || 0) - Number(b.id || 0))
   const safeEvents = Array.isArray(events) ? events.filter(event => event && validDate(String(event.event_date).slice(0, 10))) : []
   return (Array.isArray(employees) ? employees : []).map(employee => {
-    const workdays = parseWorkdays(employee.workdays)
     const todayParts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(nowMs))
     const today = `${todayParts.find(part => part.type === 'year').value}-${todayParts.find(part => part.type === 'month').value}-${todayParts.find(part => part.type === 'day').value}`
     const periodEnd = to < today ? to : today
-    const expectedMinutes = from > periodEnd ? 0 : expectedScheduleMinutes(employee, from, periodEnd, workdays, safeEvents)
-    const dailyMinutes = Math.max(1, Number(employee.work_minutes ?? Math.round((employee.target_hours || 8) * 60)))
-    const expectedDays = Math.floor(expectedMinutes / dailyMinutes)
+    const expected = expectedSchedule(employee, from, periodEnd, safeEvents)
+    const expectedMinutes = expected.workMinutes
+    const expectedDays = expected.days
     const history = safeEntries.filter(e => Number(e.employee_id) === Number(employee.id))
     let opened = null, paused = null, total = 0, breaks = 0
     let breakName = null
@@ -43,7 +42,7 @@ export function reportFor(employees, entries, from, to, now = Date.now(), events
     const expected_seconds = expectedMinutes * 60
     const workSeconds = Math.floor(total / 1000)
     const breakSeconds = Math.floor(breaks / 1000)
-    const expected_break_seconds = expectedMinutes ? Math.max(0, Number(employee.break_minutes ?? 60)) * 60 * Math.round(expectedMinutes / Math.max(1, Number(employee.work_minutes ?? 480))) : 0
+    const expected_break_seconds = expected.breakMinutes * 60
     const debt_seconds = Math.max(0, expected_seconds - workSeconds)
     const extra_break_seconds = Math.max(0, breakSeconds - expected_break_seconds)
     return { ...employee, expected_days: expectedDays, expected_seconds, expected_break_seconds, debt_seconds, extra_break_seconds, minutes: Math.floor(total / 60000), work_seconds: workSeconds, break_seconds: breakSeconds,
@@ -55,22 +54,14 @@ export function reportFor(employees, entries, from, to, now = Date.now(), events
   })
 }
 
-function parseWorkdays(value) {
-  try { const days = typeof value === 'string' ? JSON.parse(value) : value; return Array.isArray(days) && days.length && days.every(day => Number.isInteger(day) && day >= 0 && day <= 6) ? [...new Set(days)] : [1, 2, 3, 4, 5] } catch { return [1, 2, 3, 4, 5] }
-}
-
-function expectedScheduleMinutes(employee, from, to, workdays, events) {
-  const daily = Math.max(0, Number(employee.work_minutes ?? Math.round((employee.target_hours || 8) * 60)))
-  let total = 0
+function expectedSchedule(employee, from, to, events) {
+  const total = { workMinutes: 0, breakMinutes: 0, days: 0 }
   for (let cursor = Date.parse(`${from}T12:00:00Z`), end = Date.parse(`${to}T12:00:00Z`); cursor <= end; cursor += 86400000) {
     const date = new Date(cursor).toISOString().slice(0, 10)
-    const scheduled = workdays.includes(new Date(cursor).getUTCDay())
-    const dayEvents = events.filter(event => String(event.event_date).slice(0, 10) === date && (event.employee_id == null || Number(event.employee_id) === Number(employee.id)))
-    const nationalHoliday = brazilNationalHolidays(new Date(cursor).getUTCFullYear()).has(date)
-    const excused = dayEvents.some(event => ['Feriado', 'Folga', 'Emenda'].includes(event.kind))
-    const extra = dayEvents.some(event => event.kind === 'Trabalho extra')
-    if ((excused || nationalHoliday) && !extra) continue
-    if (scheduled || extra) total += daily
+    const plan = scheduleForDate(employee, date, events)
+    total.workMinutes += plan.workMinutes
+    total.breakMinutes += plan.breakMinutes
+    if (plan.workMinutes > 0) total.days++
   }
   return total
 }

@@ -69,7 +69,7 @@ As migrations são aplicadas na inicialização. Com `DATABASE_URL` no `.env`, u
 - `CORS_ORIGINS`: origens permitidas separadas por vírgula; inclui as origens locais do Capacitor por padrão.
 - `VITE_API_URL`: URL da API no build, por exemplo `https://seu-servidor.example/api`; configure em `.env.local`.
 
-As duas interfaces estão no mesmo frontend, com URLs separadas e permissões aplicadas no servidor. Não são dois APKs separados. O backend roda em Node, não dentro do APK. Para Android, configure `VITE_API_URL`, execute `npm run build` e `npx cap sync android`. O aplicativo abre o terminal por padrão. O backend deve estar acessível pelo aparelho.
+As duas interfaces estão no mesmo frontend, com URLs separadas e permissões aplicadas no servidor. Não são dois APKs separados. O backend roda em Node, não dentro do APK. Para Android, configure `VITE_API_URL`, execute `npm run android:sync`. A sincronização gera um build novo antes de copiar os arquivos para o Android; depois gere e instale o APK no Android Studio. O aplicativo abre o terminal por padrão. O backend deve estar acessível pelo aparelho.
 
 ## Autenticação
 
@@ -134,7 +134,7 @@ A instalação usa `npm ci --include=dev` para incluir os tipos do React e as fe
 
 O dashboard separa tempo em serviço e em almoço/intervalo, mostra a situação atual de cada pessoa e permite combinar busca por nome (sem diferenciar acentos) com filtro de função. Os totais refletem apenas os funcionários filtrados. A função é um campo separado do departamento, definido no cadastro ou em **Funcionários → Editar função**. Cadastros antigos começam sem função e são preservados pela migration 004.
 
-No cadastro de funcionário, informe apenas nome completo, função, tempo de serviço por dia, tempo esperado de almoço/intervalo, PIN e foto. Os tempos usam o formato `HH:MM`; por exemplo, `07:20` de serviço e `01:00` de almoço. A matrícula interna é gerada automaticamente. O dashboard e o relatório calculam a meta prevista em dias úteis, comparam com o serviço realizado e mostram o total de horas devidas. Uma entrada atrasada, um retorno atrasado do almoço/café ou uma pausa maior reduz o tempo de serviço e aumenta o saldo devido. A meta não conta sábado e domingo.
+No cadastro de funcionário, informe apenas nome completo, função, tempo de serviço por dia, tempo esperado de almoço/intervalo, PIN e foto. Os tempos usam o formato `HH:MM`; por exemplo, `07:20` de serviço e `01:00` de almoço. A matrícula interna é gerada automaticamente. O dashboard e o relatório calculam a meta prevista em dias úteis, comparam com o serviço realizado e mostram o total de horas devidas. Uma entrada atrasada, um retorno atrasado do almoço/café ou uma pausa maior reduz o tempo de serviço e aumenta o saldo devido. A meta segue os dias trabalhados de cada funcionário e as exceções registradas no calendário.
 
 Na aba **Funcionários**, use **Editar funcionário** para alterar função, departamento, serviço diário e intervalo esperado. No card do dashboard, a tela mostra separadamente: previstas, trabalhadas, devidas e intervalo a mais. O intervalo a mais é o tempo de pausas realizadas acima do intervalo esperado acumulado no período. Por exemplo, com meta de 100 horas e 20 trabalhadas, o card mostra 80 horas devidas.
 
@@ -155,3 +155,33 @@ O nome fica gravado na batida, inclusive no retorno: desativar ou substituir reg
 Clique no card do funcionário no dashboard para abrir o relatório individual, mantendo o período selecionado. O card também pode ser acionado pelo teclado. O histórico mostra o nome, a foto e ícones próprios para entrada, saída, retorno, almoço, café e pausa genérica.
 
 Na aba Funcionários, escolha uma foto no cadastro ou no funcionário existente. A foto é opcional, pode ser substituída/removida e só pode ser alterada por administrador. JPG, PNG e WebP de até 10 MB são reduzidos no navegador para até 320 pixels antes do envio; a API aceita até 250 KB e persiste a miniatura no banco, sem depender de disco local na Vercel. Fotos ficam disponíveis apenas nas respostas administrativas já protegidas. Não são tiradas fotos a cada batida.
+
+
+## Folgas e escala mensal
+
+Em **Calendário**, selecione a pessoa, a data e o tipo **Folga** ou **Trabalho**. A visualização mostra quem trabalha, quem folga e as horas previstas. É possível salvar apenas a data selecionada, repetir toda semana ou a cada 14 dias, sempre a partir dessa data até o fim do mesmo mês. O próximo mês deve ser planejado separadamente.
+
+- **Folga fixa às terças ou quintas:** desmarque esse dia em **Funcionários → Editar funcionário → Dias trabalhados**. Para folgar sábado e domingo, deixe apenas segunda a sexta marcados.
+- **Domingo sim, domingo não:** mantenha domingo marcado nos dias trabalhados; no calendário, escolha o primeiro domingo de folga e cadastre **Folga → A cada 14 dias**.
+- **Feriado por escala:** os feriados nacionais já aparecem no calendário. Escolha cada pessoa escalada e salve **Trabalho** no feriado; os demais permanecem de folga. Feriados locais podem ser cadastrados para toda a equipe.
+- **Tati aos sábados, das 7h às 11h:** selecione Tati e o primeiro sábado do mês, escolha **Trabalho**, marque **Definir horário específico**, informe entrada `07:00`, saída `11:00` e intervalo `00:00`, e repita toda semana até o fim do mês. O relatório contará quatro horas por sábado.
+
+Exceções individuais prevalecem sobre eventos da equipe e feriados automáticos. Dentro do mesmo escopo, vale a exceção salva por último. Remover uma exceção afeta somente aquela data e restaura a regra anterior. Horários específicos descontam o intervalo informado; sem horário específico, o trabalho usa a duração diária e o intervalo do cadastro. Folgas efetivas não acrescentam horas devidas. Esses horários definem a previsão, sem gerar batidas automaticamente.
+
+A migration **011_schedule_event_hours** adiciona os horários das exceções sem alterar cadastros ou batidas existentes. Execute `npm run db:migrate` no ambiente de destino antes de publicar esta versão na Vercel. No servidor local, as migrations são aplicadas na inicialização.
+
+
+Se o Android registrar `Unable to open asset URL` para arquivos em `/assets/`, execute `npm run android:sync` e gere/instale novamente o APK. O HTML e os arquivos JavaScript/CSS devem vir do mesmo build. Não restaure `dist/index.html` isoladamente após gerar o frontend. A tarefa Android `verifyWebAssets` bloqueia builds cujo HTML referencia assets ausentes.
+
+
+### Selecionar a equipe de um sábado ou domingo
+
+No **Calendário**, use **Escalar próximo sábado** ou **Escalar próximo domingo**, ou clique em qualquer data. Em **Quem trabalha neste dia?**, marque quem trabalha, deixe desmarcado quem folga e salve a escala. A lista inclui toda a equipe ativa, mesmo quando a visualização do calendário está filtrada por pessoa. A alteração vale somente para a data selecionada. Jornadas específicas já cadastradas são preservadas para quem continua escalado; novas inclusões usam as horas diárias do cadastro. Para ajustar um horário, use o formulário individual abaixo.
+
+As **horas previstas no mês** são automáticas: somam os dias efetivamente previstos, incluindo fins de semana escalados e horários específicos, e descontam folgas e feriados sem trabalho. O calendário mostra o mês selecionado; o cadastro mostra o mês atual. Não existe mais campo para preencher horas mensais. O total mensal inclui dias futuros; o relatório de horas devidas continua contabilizando somente até a data atual. É possível deixar todos os dias semanais desmarcados para planejar o funcionário apenas por datas no calendário. O antigo valor mensal armazenado deixou de ser usado.
+
+## Estilos e ícones da interface
+
+A interface usa Tailwind CSS, integrado ao Vite por `@tailwindcss/vite`. As classes utilitárias ficam nos componentes React; `src/tailwind.css` contém somente a importação do Tailwind. O antigo `src/styles.css` foi removido. Preserve classes completas nas condições para que o compilador detecte os estilos.
+
+Use ícones da biblioteca `react-icons` (Feather em `react-icons/fi` e utensílios em `react-icons/lu`). Não desenhe SVGs ou use símbolos de texto como ícones da interface. Os ícones da navegação inferior têm 18 px e os botões mantêm uma área maior para toque.

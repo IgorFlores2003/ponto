@@ -52,3 +52,21 @@ try {
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }
+
+// Reject an incomplete web bundle before it can produce a blank screen on device.
+tasks.register('verifyWebAssets') {
+    doLast {
+        def webRoot = file('src/main/assets/public')
+        def indexFile = new File(webRoot, 'index.html')
+        if (!indexFile.isFile()) {
+            throw new GradleException('Frontend ausente. Execute npm run android:sync na raiz do projeto.')
+        }
+        def references = indexFile.getText('UTF-8') =~ /(?:src|href)=["'](?:\.\/|\/)?(assets\/[^"']+)["']/
+        references.each { match ->
+            if (!new File(webRoot, match[1]).isFile()) {
+                throw new GradleException("Asset ausente: ${match[1]}. Execute npm run android:sync na raiz do projeto.")
+            }
+        }
+    }
+}
+tasks.named('preBuild').configure { dependsOn('verifyWebAssets') }
