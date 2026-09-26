@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { FiClock, FiCheck } from 'react-icons/fi'
 import PasswordInput from './PasswordInput'
 import ActionIcon from './ActionIcon'
-import { captureFrontPhoto } from './camera'
+import CameraPermissionAlert from './CameraPermissionAlert'
+import { captureFrontPhoto, checkCameraPermission } from './camera'
 import { api, ApiError, errorMessage, timestamp } from './types'
 
 type Receipt = {
@@ -19,6 +20,7 @@ export default function Terminal() {
   const [intervalType, setIntervalType] = useState<'lunch' | 'coffee'>('lunch')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [cameraBlocked, setCameraBlocked] = useState(false)
   const [receipt, setReceipt] = useState<Receipt | null>(null)
   const input = useRef<HTMLInputElement>(null)
   const lock = useRef(false)
@@ -30,6 +32,15 @@ export default function Terminal() {
     return () => clearTimeout(timer)
   }, [receipt])
 
+  useEffect(() => {
+    void (async () => {
+      const state = await checkCameraPermission()
+      if (state === 'denied') {
+        setCameraBlocked(true)
+      }
+    })()
+  }, [])
+
   async function punch(event: React.FormEvent) {
     event.preventDefault()
     if (lock.current) return
@@ -39,7 +50,22 @@ export default function Terminal() {
     setReceipt(null)
     pending.current ||= crypto.randomUUID()
     try {
-      const { photo, faceDetected } = await captureFrontPhoto()
+      const { photo, faceDetected, error: cameraError } = await captureFrontPhoto()
+
+      if (!photo) {
+        if (cameraError === 'permission_denied') {
+          setCameraBlocked(true)
+          setError('A permissão da câmera é obrigatória para bater o ponto com foto de segurança.')
+        } else if (cameraError === 'no_camera') {
+          setError('Nenhuma câmera detectada no aparelho. É obrigatório ter câmera para bater o ponto.')
+        } else {
+          setCameraBlocked(true)
+          setError('Não foi possível obter a foto da câmera. Verifique a permissão e tente novamente.')
+        }
+        return
+      }
+
+      setCameraBlocked(false)
       setReceipt(
         await api('/terminal/punch', {
           pin,
@@ -151,6 +177,15 @@ export default function Terminal() {
         <p className="mt-4 rounded-xl border border-[#e5b8b8] bg-[#fff0f0] p-3 text-[13px] text-[#913939]" role="alert">
           {error}
         </p>
+      )}
+
+      {cameraBlocked && (
+        <CameraPermissionAlert
+          onPermissionResolved={() => {
+            setCameraBlocked(false)
+            setError('')
+          }}
+        />
       )}
 
       {receipt && (
