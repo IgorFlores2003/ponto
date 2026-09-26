@@ -16,9 +16,15 @@ import WorkCalendar from './WorkCalendar'
 import PasswordInput from './PasswordInput'
 import ConfirmDialog from './ConfirmDialog'
 import { jsPDF } from 'jspdf'
-import { Capacitor } from '@capacitor/core'
+import { Capacitor, registerPlugin } from '@capacitor/core'
 import { Directory, Filesystem } from '@capacitor/filesystem'
 import { Share } from '@capacitor/share'
+
+interface FileOpenerPlugin {
+  open(options: { path: string; mimeType?: string }): Promise<void>
+}
+
+const FileOpener = registerPlugin<FileOpenerPlugin>('FileOpener')
 
 type Employee = { id: number; name: string; registration: string; department: string; job_title: string; photo: string | null; target_hours: number; work_minutes: number; break_minutes: number; monthly_minutes?: number; monthly_month?: string; workdays?: string; has_pin: boolean; active: boolean }
 type Entry = { id: number; kind: string; break_name?: string | null; occurred_at: string }
@@ -84,12 +90,20 @@ async function deliverFile(blob: Blob, filename: string) {
         recursive: true
       })
 
-      // 3. Abre a caixa de diálogo nativa do celular perguntando onde deseja abrir
-      await Share.share({
-        title: filename,
-        files: [saved.uri],
-        dialogTitle: 'Onde deseja abrir o relatório?'
-      })
+      // 3. Abre a caixa de diálogo nativa do Android 'Abrir com'
+      try {
+        await FileOpener.open({
+          path: saved.uri,
+          mimeType: blob.type.split(';')[0]
+        })
+      } catch (openErr) {
+        console.warn('FileOpener falhou, tentando fallback com Share:', openErr)
+        await Share.share({
+          title: filename,
+          files: [saved.uri],
+          dialogTitle: 'Abrir com'
+        })
+      }
 
       window.dispatchEvent(
         new CustomEvent('file-downloaded', {
