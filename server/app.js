@@ -206,7 +206,13 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     const { from, to } = req.query
     if (!validDate(from) || !validDate(to) || from > to || Date.parse(to) - Date.parse(from) > 366 * 86400000) return res.status(400).json({ error: 'Informe um período válido de até 367 dias.' })
     const employees = (await db('employees').orderBy('name')).map(publicEmployee)
-    const entries = await db('entries').orderBy('id')
+    // Busca batidas no período + 30 dias antes (para capturar jornadas abertas antes de `from`)
+    const windowStart = new Date(Date.parse(from) - 30 * 86400000).toISOString().slice(0, 10)
+    const windowEnd = `${to}T23:59:59.999Z`
+    const entries = await db('entries')
+      .where('occurred_at', '>=', `${windowStart}T00:00:00.000Z`)
+      .where('occurred_at', '<=', windowEnd)
+      .orderBy('id')
     const events = await db('schedule_events').select('id', db.raw('CAST(event_date AS TEXT) AS event_date'), 'kind', 'employee_id', 'starts_at', 'ends_at', 'work_minutes', 'break_minutes')
     res.json({ from, to, generated_at: new Date().toISOString(), rows: reportFor(employees, entries, from, to, Date.now(), events) })
   })

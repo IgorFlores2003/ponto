@@ -3,7 +3,8 @@ import {
   FiUserPlus, FiRefreshCw, FiFileText, FiDownload, FiKey,
   FiUserX, FiUserCheck, FiTrash2, FiEdit2, FiSmartphone
 } from 'react-icons/fi'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import ErrorBoundary from './ErrorBoundary'
 import Dashboard from './Dashboard'
 import BottomNav from './BottomNav'
 import type { DashboardFilters } from './DashboardFiltersModal'
@@ -187,7 +188,13 @@ export default function App() {
             </h1>
           </div>
         </header>
-        {admin ? <Admin /> : <Terminal />}
+        {admin
+          ? <ErrorBoundary fallbackLabel="Erro na área administrativa. Tente recarregar.">
+              <Admin />
+            </ErrorBoundary>
+          : <ErrorBoundary fallbackLabel="Erro no terminal de ponto. Tente recarregar.">
+              <Terminal />
+            </ErrorBoundary>}
       </div>
     </main>
   )
@@ -638,8 +645,20 @@ async function logout() {
     filtered.forEach(row => { if (y > 190) { pdf.addPage('a4', 'landscape'); y = 18 } pdf.text(String(row.name).slice(0, 28), x[0], y); pdf.text(String(row.job_title || 'Sem função').slice(0, 24), x[1], y); pdf.text(hours(Math.floor(row.expected_seconds / 60)), x[2], y); pdf.text(hours(row.minutes), x[3], y); pdf.text(hours(Math.floor(row.debt_seconds / 60)), x[4], y); pdf.text(hours(Math.floor(row.break_seconds / 60)), x[5], y); pdf.text(hours(Math.floor(row.extra_break_seconds / 60)), x[6], y); y += 8 })
     pdf.setFontSize(8); pdf.setTextColor(90, 105, 96); pdf.text('Horas devidas = previstas menos trabalhadas. Intervalo a mais = pausas acima do esperado.', 14, 202); void deliverFile(pdf.output('blob'), `relatorio-horas-${report.from}-${report.to}.pdf`)
   }
-  const rows = report?.rows.filter(row => !selected || String(row.id) === selected) || []
-  const visibleEntries = entries.filter(entry => { const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(entry.occurred_at)); return date >= from && date <= to }).slice().reverse()
+  const rows = useMemo(
+    () => report?.rows.filter(row => !selected || String(row.id) === selected) ?? [],
+    [report, selected]
+  )
+  const visibleEntries = useMemo(
+    () => entries
+      .filter(entry => {
+        const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(entry.occurred_at))
+        return date >= from && date <= to
+      })
+      .slice()
+      .reverse(),
+    [entries, from, to]
+  )
   const inputClass = "min-w-0 w-full rounded-xl border border-[#cbded2] bg-white p-3 text-sm text-[#315847] focus-visible:outline-2 focus-visible:outline-[#31835b]"
   const labelClass = "grid gap-1.5 text-xs font-bold text-[#527566]"
 
