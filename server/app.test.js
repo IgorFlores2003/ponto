@@ -67,6 +67,12 @@ test('permissões, PIN exclusivo, batidas, relatório e sessões', async () => {
     assert.equal(confirmRes.status, 200)
     assert.ok(confirmRes.data.admin_confirmed)
     assert.equal(confirmRes.data.divergence_status, 'confirmed')
+    const rejectRes = await request(`/entries/${igorEntries[0].id}/reject`, {}, token)
+    assert.equal(rejectRes.status, 200)
+    assert.equal(rejectRes.data.divergence_status, 'rejected')
+    const confirmWithStatus = await request(`/entries/${igorEntries[0].id}/confirm`, { status: 'rejected' }, token)
+    assert.equal(confirmWithStatus.status, 200)
+    assert.equal(confirmWithStatus.data.divergence_status, 'rejected')
     async function ageLast() { const last = await db('entries').where({ employee_id: igor.data.id }).orderBy('id', 'desc').first(); await db('entries').where({ id: last.id }).update({ occurred_at: new Date(Date.now() - 10000).toISOString() }) }
     await ageLast(); assert.equal((await punch('1234', { kind: 'Início do intervalo' })).data.kind, 'Início do intervalo')
     await ageLast(); assert.equal((await punch('1234')).data.kind, 'Fim do intervalo')

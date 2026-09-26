@@ -167,35 +167,47 @@ export default function ReportTab({
           ) : visibleEntries.length === 0 ? (
             <p className="px-1 py-4 text-xs text-[#668174]">Nenhuma batida no período.</p>
           ) : (
-            visibleEntries.map(entry => (
-              <div
-                className="flex items-center justify-between gap-2.5 border-b border-[#edf0ee] px-1 py-3"
-                key={entry.id}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <ActionIcon kind={entry.kind} breakName={entry.break_name} />
-                  <div>
-                    <strong className="block text-xs text-[#143f31]">
-                      {entry.kind}{entry.break_name ? ` · ${entry.break_name}` : ''}
-                    </strong>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                      <span className="text-[11px] text-[#82958b]">{timestamp(entry.occurred_at)}</span>
-                      <DivergenceBadge entry={entry} />
+            visibleEntries.map(entry => {
+              const isRejected = entry.divergence_status === 'rejected'
+              const isValidated = entry.admin_confirmed || entry.divergence_status === 'confirmed'
+              return (
+                <div
+                  className={`flex items-center justify-between gap-2.5 border-b border-[#edf0ee] px-2 py-3 rounded-xl transition ${
+                    isRejected ? 'bg-[#fef2f2]/60' : isValidated ? 'bg-[#f0fdf4]/40' : ''
+                  }`}
+                  key={entry.id}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <ActionIcon kind={entry.kind} breakName={entry.break_name} />
+                    <div>
+                      <strong className={`block text-xs ${isRejected ? 'text-[#991b1b]' : 'text-[#143f31]'}`}>
+                        {entry.kind}{entry.break_name ? ` · ${entry.break_name}` : ''}
+                      </strong>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] text-[#82958b]">{timestamp(entry.occurred_at)}</span>
+                        <DivergenceBadge entry={entry} />
+                      </div>
                     </div>
                   </div>
+                  {entry.punch_photo ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEntry(entry)}
+                      className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                        isRejected
+                          ? 'border border-[#fca5a5] bg-[#fee2e2] text-[#b91c1c] hover:bg-[#fecaca]'
+                          : isValidated
+                          ? 'border border-[#86efac] bg-[#f0fdf4] text-[#166534] hover:bg-[#dcfce7]'
+                          : 'border border-[#cbded2] bg-[#f7fbf9] text-[#1f4a38] hover:bg-[#e4efe8]'
+                      }`}
+                    >
+                      <FiCamera size={13} aria-hidden="true" />
+                      Abrir foto
+                    </button>
+                  ) : null}
                 </div>
-                {entry.punch_photo ? (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedEntry(entry)}
-                    className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#cbded2] bg-[#f7fbf9] px-2.5 py-1 text-xs font-semibold text-[#1f4a38] transition hover:bg-[#e4efe8]"
-                  >
-                    <FiCamera size={13} aria-hidden="true" />
-                    Abrir foto
-                  </button>
-                ) : null}
-              </div>
-            ))
+              )
+            })
           )}
         </section>
       )}
@@ -216,7 +228,7 @@ export default function ReportTab({
           token={token}
           onClose={() => setSelectedEntry(null)}
           onConfirmed={updated => {
-            setSelectedEntry(updated)
+            setSelectedEntry(null)
             onEntryUpdated?.(updated)
           }}
         />

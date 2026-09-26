@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FiX, FiCheckCircle, FiAlertTriangle, FiAlertCircle, FiCheck, FiClock } from 'react-icons/fi'
+import { FiX, FiCheckCircle, FiAlertTriangle, FiAlertCircle, FiCheck, FiClock, FiXCircle } from 'react-icons/fi'
 import { api, timestamp, type Employee, type Entry } from './types'
 
 interface Props {
@@ -29,6 +29,20 @@ export default function PunchPhotoModal({
     setCurrentEntry(entry)
   }, [entry])
 
+  // Se a análise ainda estiver pendente, dispara imediatamente para não deixar aguardando
+  useEffect(() => {
+    if (token && currentEntry.divergence_status === 'pending' && currentEntry.punch_photo) {
+      api<Entry>(`/entries/${currentEntry.id}/analyze`, {}, token)
+        .then(updated => {
+          if (updated && updated.divergence_status !== 'pending') {
+            setCurrentEntry(updated)
+            onConfirmed?.(updated)
+          }
+        })
+        .catch(() => {})
+    }
+  }, [currentEntry.id, currentEntry.divergence_status, currentEntry.punch_photo, token])
+
   const title = `${currentEntry.kind}${currentEntry.break_name ? ` · ${currentEntry.break_name}` : ''}`
   const time = timestamp(currentEntry.occurred_at)
 
@@ -37,17 +51,43 @@ export default function PunchPhotoModal({
     setConfirming(true)
     setError('')
     try {
-      const updated = await api<Entry>(`/entries/${currentEntry.id}/confirm`, {}, token)
+      const updated = await api<Entry>(`/entries/${currentEntry.id}/confirm`, { status: 'confirmed' }, token)
       const merged: Entry = {
         ...currentEntry,
         admin_confirmed: true,
         admin_confirmed_at: updated?.admin_confirmed_at || new Date().toISOString(),
         divergence_status: 'confirmed',
       }
-      setCurrentEntry(merged)
       onConfirmed?.(merged)
+      onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao confirmar batida.')
+      setError(err instanceof Error ? err.message : 'Falha ao validar batida.')
+    } finally {
+      setConfirming(false)
+    }
+  }
+
+  async function handleReject() {
+    if (!token) return
+    setConfirming(true)
+    setError('')
+    try {
+      let updated: Entry | null = null
+      try {
+        updated = await api<Entry>(`/entries/${currentEntry.id}/reject`, {}, token)
+      } catch {
+        updated = await api<Entry>(`/entries/${currentEntry.id}/confirm`, { status: 'rejected' }, token)
+      }
+      const merged: Entry = {
+        ...currentEntry,
+        admin_confirmed: true,
+        admin_confirmed_at: updated?.admin_confirmed_at || new Date().toISOString(),
+        divergence_status: 'rejected',
+      }
+      onConfirmed?.(merged)
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao marcar foto como errada.')
     } finally {
       setConfirming(false)
     }
@@ -153,6 +193,19 @@ export default function PunchPhotoModal({
           </div>
         )}
 
+        {currentEntry.divergence_status === 'rejected' && (
+          <div className="mt-3.5 rounded-xl border border-[#f87171]/50 bg-[#fef2f2] p-3 text-center text-xs font-bold text-[#b91c1c]">
+            <div className="flex items-center justify-center gap-1.5">
+              <FiXCircle size={16} /> Foto marcada como errada pelo administrador
+            </div>
+            {currentEntry.admin_confirmed_at && (
+              <span className="mt-0.5 block text-[10px] font-normal text-[#991b1b]">
+                Registrado em {timestamp(currentEntry.admin_confirmed_at)}
+              </span>
+            )}
+          </div>
+        )}
+
         {currentEntry.divergence_status === 'ok' && !currentEntry.admin_confirmed && (
           <div className="mt-3.5 rounded-xl border border-[#86efac]/40 bg-[#f0fdf4] p-2.5 text-center text-xs font-semibold text-[#166534]">
             <FiCheck size={14} className="mr-1 inline" /> Rosto identificado e validado
@@ -174,15 +227,26 @@ export default function PunchPhotoModal({
           {token &&
             (currentEntry.divergence_status === 'divergence' || currentEntry.divergence_status === 'no_face') &&
             !currentEntry.admin_confirmed && (
-              <button
-                type="button"
-                onClick={handleConfirm}
-                disabled={confirming}
-                className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#1e5944] py-2.5 text-xs font-bold text-white transition hover:bg-[#143f31] disabled:opacity-50"
-              >
-                <FiCheckCircle size={15} />
-                {confirming ? 'Confirmando…' : 'Administrador confirma divergência e valida batida'}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleConfirm}
+                  disabled={confirming}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#1e5944] py-2.5 text-xs font-bold text-white transition hover:bg-[#143f31] disabled:opacity-50"
+                >
+                  <FiCheckCircle size={15} />
+                  {confirming ? 'Confirmando…' : 'Validar batida mesmo com divergência'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReject}
+                  disabled={confirming}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#fca5a5] bg-[#fef2f2] py-2.5 text-xs font-bold text-[#b91c1c] transition hover:bg-[#fee2e2] disabled:opacity-50"
+                >
+                  <FiXCircle size={15} />
+                  {confirming ? 'Processando…' : 'Marcar como foto errada'}
+                </button>
+              </>
             )}
 
           <button

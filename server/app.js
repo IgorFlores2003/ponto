@@ -326,11 +326,44 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Batida inválida.' })
     const entry = await db('entries').where({ id }).first()
     if (!entry) return res.status(404).json({ error: 'Batida não encontrada.' })
+    const status = req.body?.status === 'rejected' ? 'rejected' : 'confirmed'
     await db('entries').where({ id }).update({
       admin_confirmed: true,
       admin_confirmed_at: new Date().toISOString(),
-      divergence_status: 'confirmed',
+      divergence_status: status,
     })
+    res.json(await db('entries').where({ id }).first())
+  })
+  app.post('/api/entries/:id/reject', async (req, res) => {
+    const id = Number(req.params.id)
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Batida inválida.' })
+    const entry = await db('entries').where({ id }).first()
+    if (!entry) return res.status(404).json({ error: 'Batida não encontrada.' })
+    await db('entries').where({ id }).update({
+      admin_confirmed: true,
+      admin_confirmed_at: new Date().toISOString(),
+      divergence_status: 'rejected',
+    })
+    res.json(await db('entries').where({ id }).first())
+  })
+  app.post('/api/entries/:id/analyze', async (req, res) => {
+    const id = Number(req.params.id)
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Batida inválida.' })
+    const entry = await db('entries').where({ id }).first()
+    if (!entry) return res.status(404).json({ error: 'Batida não encontrada.' })
+    if (!entry.punch_photo) return res.status(400).json({ error: 'Batida sem foto.' })
+    const employee = await db('employees').where({ id: entry.employee_id }).first()
+    const analysis = await analyzer({
+      punchPhoto: entry.punch_photo,
+      employeePhoto: employee?.photo,
+    })
+    if (analysis) {
+      await db('entries').where({ id }).update({
+        face_detected: analysis.face_detected,
+        divergence_status: analysis.divergence_status,
+        divergence_reason: analysis.divergence_reason,
+      })
+    }
     res.json(await db('entries').where({ id }).first())
   })
   app.use('/api', (req, res) => res.status(404).json({ error: 'Rota não encontrada.' }))

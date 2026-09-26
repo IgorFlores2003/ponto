@@ -1,4 +1,4 @@
-import { FiAlertTriangle, FiAlertCircle, FiCheckCircle, FiCheck, FiClock } from 'react-icons/fi'
+import { FiAlertTriangle, FiAlertCircle, FiCheckCircle, FiCheck, FiClock, FiXCircle } from 'react-icons/fi'
 import type { Entry } from './types'
 
 interface Props {
@@ -9,10 +9,21 @@ interface Props {
  * Badge de status para conferência biométrica / detecção facial da batida.
  */
 export default function DivergenceBadge({ entry }: Props) {
+  if (entry.divergence_status === 'rejected') {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-[#fee2e2] px-2 py-0.5 text-[10px] font-bold text-[#b91c1c]"
+        title="Foto marcada como errada pelo administrador"
+      >
+        <FiXCircle size={10} aria-hidden="true" /> Foto errada
+      </span>
+    )
+  }
+
   if (entry.admin_confirmed || entry.divergence_status === 'confirmed') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-[#dcfce7] px-2 py-0.5 text-[10px] font-bold text-[#166534]">
-        <FiCheckCircle size={10} aria-hidden="true" /> Confirmado
+        <FiCheckCircle size={10} aria-hidden="true" /> Validada
       </span>
     )
   }
