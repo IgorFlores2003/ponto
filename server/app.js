@@ -35,9 +35,10 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     res.json({ token, expires_at, username: admin.username })
   })
   app.post('/api/terminal/punch', rateLimit(db, 'pin', 30, 60000), async (req, res) => {
-    const { pin, kind = 'auto', interval_type, request_id } = req.body || {}
+    const { pin, kind = 'auto', interval_type, request_id, photo = null } = req.body || {}
     if (typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'Informe um PIN de 4 números.' })
     if (typeof request_id !== 'string' || !/^[a-f0-9-]{36}$/i.test(request_id)) return res.status(400).json({ error: 'Identificador de batida inválido.' })
+    if (photo && !validPhoto(photo)) return res.status(400).json({ error: 'Foto de batida inválida.' })
     if (kind !== 'auto' && kind !== 'start_break' && kind !== 'end_break' && kind !== 'interval' && !Object.hasOwn(transitions, kind)) return res.status(400).json({ error: 'Tipo de batida inválido.' })
     if (['start_break', 'interval'].includes(kind) && !['lunch', 'coffee'].includes(interval_type)) return res.status(400).json({ error: 'Selecione almoço ou café.' })
     const employee = await db('employees').where({ pin_digest: await pinDigest(db, pin) }).first()
@@ -66,7 +67,8 @@ export function createApp(db, { clock = () => new Date() } = {}) {
       if (!(last ? transitions[last.kind] || [] : ['Entrada']).includes(next)) return null
       // Evita que dois envios simultâneos gerem entrada e saída acidentais.
       if (last && now.getTime() - Date.parse(last.occurred_at) < 5000) return null
-      const [{ id }] = await trx('entries').insert({ employee_id: employee.id, kind: next, occurred_at: now.toISOString(), request_id, ...breakInfo }).returning('id')
+      const punch_photo = photo && validPhoto(photo) ? photo : null
+      const [{ id }] = await trx('entries').insert({ employee_id: employee.id, kind: next, occurred_at: now.toISOString(), request_id, punch_photo, ...breakInfo }).returning('id')
       return trx('entries').where({ id }).first()
     })
     if (result?.inactive) return res.status(403).json({ error: 'Funcionário desativado. Procure o administrador.' })
@@ -268,7 +270,7 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     try { await db('employees').where({ id: res.locals.employeeId }).update({ pin_digest: await pinDigest(db, pin) }); res.sendStatus(204) }
     catch (error) { if (['SQLITE_CONSTRAINT_UNIQUE', '23505'].includes(error.code)) return res.status(409).json({ error: 'PIN já utilizado por outro funcionário.' }); throw error }
   })
-  app.get('/api/employees/:id/entries', async (req, res) => res.json(await db('entries').select('id', 'employee_id', 'kind', 'occurred_at', 'break_name').where({ employee_id: res.locals.employeeId }).orderBy('id')))
+  app.get('/api/employees/:id/entries', async (req, res) => res.json(await db('entries').select('id', 'employee_id', 'kind', 'occurred_at', 'break_name', 'punch_photo').where({ employee_id: res.locals.employeeId }).orderBy('id')))
   app.use('/api', (req, res) => res.status(404).json({ error: 'Rota não encontrada.' }))
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error)

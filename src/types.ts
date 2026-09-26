@@ -22,6 +22,7 @@ export type Entry = {
   kind: string
   break_name?: string | null
   occurred_at: string
+  punch_photo?: string | null
 }
 
 export type ReportRow = Employee & {

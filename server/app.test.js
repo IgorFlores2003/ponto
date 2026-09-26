@@ -52,13 +52,15 @@ test('permissões, PIN exclusivo, batidas, relatório e sessões', async () => {
     const punch = (pin, rest = {}) => request('/terminal/punch', { pin, request_id: randomUUID(), ...rest })
     assert.equal((await punch('9999')).status, 401)
     const id = randomUUID()
-    const first = await punch('1234', { request_id: id, employee_id: yasmim.data.id, occurred_at: '2000-01-01' })
+    const first = await punch('1234', { request_id: id, employee_id: yasmim.data.id, occurred_at: '2000-01-01', photo })
     assert.equal(first.status, 200); assert.equal(first.data.employee_name, 'Igor'); assert.equal(first.data.kind, 'Entrada')
     assert.ok(Date.now() - Date.parse(first.data.occurred_at) < 10000)
     assert.deepEqual((await punch('1234', { request_id: id })).data, first.data)
     assert.equal((await punch('1234')).status, 409)
     assert.equal((await punch('2344')).data.employee_name, 'Yasmim')
-    assert.equal((await request(`/employees/${igor.data.id}/entries`, undefined, token)).data.length, 1)
+    const igorEntries = (await request(`/employees/${igor.data.id}/entries`, undefined, token)).data
+    assert.equal(igorEntries.length, 1)
+    assert.equal(igorEntries[0].punch_photo, photo)
     async function ageLast() { const last = await db('entries').where({ employee_id: igor.data.id }).orderBy('id', 'desc').first(); await db('entries').where({ id: last.id }).update({ occurred_at: new Date(Date.now() - 10000).toISOString() }) }
     await ageLast(); assert.equal((await punch('1234', { kind: 'Início do intervalo' })).data.kind, 'Início do intervalo')
     await ageLast(); assert.equal((await punch('1234')).data.kind, 'Fim do intervalo')

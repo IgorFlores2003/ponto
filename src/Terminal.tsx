@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FiClock, FiCheck } from 'react-icons/fi'
 import PasswordInput from './PasswordInput'
 import ActionIcon from './ActionIcon'
+import { captureFrontPhoto } from './camera'
 import { api, ApiError, errorMessage, timestamp } from './types'
 
 type Receipt = {
@@ -38,12 +39,14 @@ export default function Terminal() {
     setReceipt(null)
     pending.current ||= crypto.randomUUID()
     try {
+      const photo = await captureFrontPhoto()
       setReceipt(
         await api('/terminal/punch', {
           pin,
           kind,
           interval_type: kind === 'start_break' ? intervalType : undefined,
           request_id: pending.current,
+          photo,
         }),
       )
       pending.current = null

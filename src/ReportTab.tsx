@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { FiFileText, FiDownload } from 'react-icons/fi'
+import { useMemo, useState } from 'react'
+import { FiFileText, FiDownload, FiCamera, FiX } from 'react-icons/fi'
 import ActionIcon from './ActionIcon'
 import { Avatar } from './EmployeePhoto'
 import { hours, timestamp, INPUT_CLASS, LABEL_CLASS, type Employee, type Entry, type Report } from './types'
@@ -106,6 +106,8 @@ async function buildPdf(report: Report, selected: string) {
 export default function ReportTab({
   report, employees, entries, selected, from, to, loadingHistory, onSelectEmployee,
 }: Props) {
+  const [selectedPhoto, setSelectedPhoto] = useState<{ photo: string; title: string; time: string } | null>(null)
+
   const rows = useMemo(
     () => report.rows.filter(row => !selected || String(row.id) === selected),
     [report, selected],
@@ -202,14 +204,32 @@ export default function ReportTab({
             <p className="px-1 py-4 text-xs text-[#668174]">Nenhuma batida no período.</p>
           ) : (
             visibleEntries.map(entry => (
-              <div className="flex items-center gap-2.5 border-b border-[#edf0ee] px-1 py-3" key={entry.id}>
-                <ActionIcon kind={entry.kind} breakName={entry.break_name} />
-                <div>
-                  <strong className="block text-xs text-[#143f31]">
-                    {entry.kind}{entry.break_name ? ` · ${entry.break_name}` : ''}
-                  </strong>
-                  <span className="block text-[11px] text-[#82958b]">{timestamp(entry.occurred_at)}</span>
+              <div className="flex items-center justify-between gap-2.5 border-b border-[#edf0ee] px-1 py-3" key={entry.id}>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <ActionIcon kind={entry.kind} breakName={entry.break_name} />
+                  <div>
+                    <strong className="block text-xs text-[#143f31]">
+                      {entry.kind}{entry.break_name ? ` · ${entry.break_name}` : ''}
+                    </strong>
+                    <span className="block text-[11px] text-[#82958b]">{timestamp(entry.occurred_at)}</span>
+                  </div>
                 </div>
+                {entry.punch_photo ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedPhoto({
+                        photo: entry.punch_photo!,
+                        title: `${entry.kind}${entry.break_name ? ` · ${entry.break_name}` : ''}`,
+                        time: timestamp(entry.occurred_at),
+                      })
+                    }
+                    className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#cbded2] bg-[#f7fbf9] px-2.5 py-1 text-xs font-semibold text-[#1f4a38] transition hover:bg-[#e4efe8]"
+                  >
+                    <FiCamera size={13} aria-hidden="true" />
+                    Abrir foto
+                  </button>
+                ) : null}
               </div>
             ))
           )}
@@ -224,6 +244,49 @@ export default function ReportTab({
         Inclui jornadas em andamento e desconta intervalos. Horário de Brasília.{' '}
         Atualizado em {timestamp(report.generated_at)}.
       </p>
+
+      {selectedPhoto && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+          onClick={() => setSelectedPhoto(null)}
+        >
+          <div
+            className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-[#edf0ee] pb-3">
+              <div>
+                <h4 className="text-sm font-bold text-[#143f31]">{selectedPhoto.title}</h4>
+                <p className="text-[11px] text-[#82958b]">{selectedPhoto.time}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedPhoto(null)}
+                className="rounded-lg p-1.5 text-[#527566] transition hover:bg-[#edf0ee]"
+                aria-label="Fechar"
+              >
+                <FiX size={18} />
+              </button>
+            </div>
+
+            <div className="mt-4 flex max-h-[380px] items-center justify-center overflow-hidden rounded-xl border border-[#cbded2] bg-neutral-900">
+              <img
+                src={selectedPhoto.photo}
+                alt={`Foto da batida ${selectedPhoto.title}`}
+                className="max-h-[380px] w-full object-contain"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedPhoto(null)}
+              className="mt-4 w-full rounded-xl bg-[#2a674f] py-2.5 text-xs font-bold text-white transition hover:bg-[#1e4d3a]"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
     </>
   )
 }
