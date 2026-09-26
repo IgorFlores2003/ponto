@@ -7,6 +7,9 @@ export default function SuccessToast({ message, onClose }: { message: string; on
     const timer = window.setTimeout(onClose, 5000)
     return () => window.clearTimeout(timer)
   }, [message, onClose])
+
+  if (!message) return null
+
   return (
     <div
       className="fixed bottom-[calc(96px+env(safe-area-inset-bottom))] left-1/2 z-[2000] flex w-max max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-3 rounded-[14px] bg-[#174b31] px-4 py-3 text-white shadow-[0_8px_30px_rgba(0,0,0,0.2)]"

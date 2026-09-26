@@ -182,7 +182,7 @@ export default function WorkCalendar({ employees, request, onError, onChanged }:
         <span>Sábado e domingo seguem a escala de cada pessoa.</span>
       </div>
 
-      <SuccessToast message={notice} onClose={() => setNotice('')} />
+      {notice ? <SuccessToast message={notice} onClose={() => setNotice('')} /> : null}
 
       {loading ? (
         <p role="status" className="py-4 text-xs text-[#668174]">Carregando escala…</p>

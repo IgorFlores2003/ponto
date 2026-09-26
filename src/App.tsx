@@ -128,9 +128,11 @@ export default function App() {
           : 'max-w-[460px] p-5 sm:p-7'
       }`}>
         <header className="mb-6 flex items-center gap-3">
-          <div className="grid size-[42px] place-items-center rounded-[13px] bg-[#143f31] font-extrabold tracking-tight text-[#d3efdf]">
-            PD
-          </div>
+          <img
+            src="/icon-admin.png"
+            alt="Ponto Digital"
+            className="size-[42px] rounded-[13px] object-cover shadow-sm"
+          />
           <div>
             <span className="mb-1 block text-[10px] font-bold tracking-[0.14em] text-[#789185]">
               PONTO DIGITAL
@@ -659,7 +661,7 @@ async function logout() {
         </div>
       )}
 
-      <SuccessToast message={notice} onClose={() => setNotice('')} />
+      {notice ? <SuccessToast message={notice} onClose={() => setNotice('')} /> : null}
 
       {tab === 'calendario' ? (
         <WorkCalendar employees={employees} onChanged={() => setVersion(v => v + 1)} request={<T,>(path: string, body?: unknown) => api<T>(path, body, token)} onError={fail} />

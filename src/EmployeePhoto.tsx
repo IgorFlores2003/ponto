@@ -2,11 +2,16 @@ import { useRef, useState } from 'react'
 import { FiCamera, FiTrash2 } from 'react-icons/fi'
 
 export function Avatar({ name, photo }: { name: string; photo?: string | null }) {
-  return photo ? (
-    <img className="size-[52px] shrink-0 rounded-full border-2 border-[#dce8e1] object-cover" src={photo} alt={`Foto de ${name}`} />
-  ) : (
+  if (photo) {
+    return <img className="size-[52px] shrink-0 rounded-full border-2 border-[#dce8e1] object-cover" src={photo} alt={`Foto de ${name}`} />
+  }
+  const initials = name.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase() || '?'
+  if (initials === 'PD' || name.trim().toUpperCase() === 'PD' || name.trim().toUpperCase() === 'PONTO DIGITAL') {
+    return <img className="size-[52px] shrink-0 rounded-full border-2 border-[#dce8e1] object-cover" src="/icon-admin.png" alt={`Foto de ${name}`} />
+  }
+  return (
     <span className="inline-grid size-[52px] shrink-0 place-items-center rounded-full border-2 border-[#dce8e1] bg-[#e2f3e8] text-lg font-bold text-[#246841]" aria-hidden="true">
-      {name.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase() || '?'}
+      {initials}
     </span>
   )
 }
