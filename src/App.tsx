@@ -55,6 +55,28 @@ async function deliverFile(blob: Blob, filename: string) {
         reader.readAsDataURL(blob)
       })
 
+      // 1. Tenta salvar nos Documentos/Downloads do aparelho para manter o download salvo localmente
+      try {
+        await Filesystem.writeFile({
+          path: `Download/${filename}`,
+          data: base64,
+          directory: Directory.ExternalStorage,
+          recursive: true
+        })
+      } catch {
+        try {
+          await Filesystem.writeFile({
+            path: filename,
+            data: base64,
+            directory: Directory.Documents,
+            recursive: true
+          })
+        } catch {
+          // fallback caso o dispositivo restrinja acesso direto ao diretório externo
+        }
+      }
+
+      // 2. Salva em Cache para compartilhamento seguro através do FileProvider
       const saved = await Filesystem.writeFile({
         path: `reports/${filename}`,
         data: base64,
@@ -62,10 +84,11 @@ async function deliverFile(blob: Blob, filename: string) {
         recursive: true
       })
 
+      // 3. Abre a caixa de diálogo nativa do celular perguntando onde deseja abrir
       await Share.share({
         title: filename,
         files: [saved.uri],
-        dialogTitle: 'Abrir ou compartilhar relatório'
+        dialogTitle: 'Onde deseja abrir o relatório?'
       })
 
       window.dispatchEvent(
@@ -76,7 +99,6 @@ async function deliverFile(blob: Blob, filename: string) {
 
       return
     } catch (error) {
-      // Closing the system chooser is a normal user action.
       if (error && typeof error === 'object' && 'message' in error &&
         /\b(cancelled|canceled)\b/i.test(String(error.message))) return
       console.error('Erro ao baixar arquivo:', error)
@@ -89,32 +111,41 @@ async function deliverFile(blob: Blob, filename: string) {
     }
   }
 
-  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  if (isMobile && navigator.share && navigator.canShare) {
-    const file = new File([blob], filename, { type: blob.type.split(';')[0] })
-    if (navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: filename })
-        return
-      } catch (error) {
-        if (error instanceof DOMException && error.name === 'AbortError') return
-        // If sharing is blocked by the browser, keep the download available.
-      }
-    }
-  }
-
+  // 1. Dispara o download direto no armazenamento do celular / navegador
   const url = URL.createObjectURL(blob)
-
   const link = document.createElement('a')
   link.href = url
   link.download = filename
-
   document.body.appendChild(link)
   link.click()
-  link.remove()
+  setTimeout(() => {
+    link.remove()
+    URL.revokeObjectURL(url)
+  }, 1000)
 
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  // 2. No celular com suporte a compartilhamento, já pergunta onde abrir o arquivo
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  if (isMobile && typeof navigator.share === 'function') {
+    try {
+      const file = new File([blob], filename, { type: blob.type.split(';')[0] || 'application/octet-stream' })
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: filename
+        })
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      console.warn('Compartilhamento cancelado ou não suportado:', error)
+    }
+  }
+
+  window.dispatchEvent(
+    new CustomEvent('file-downloaded', {
+      detail: { filename }
+    })
+  )
 }
 
 export default function App() {
@@ -611,11 +642,11 @@ async function logout() {
 
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className={`text-sm font-bold ${downloadNotice.type === 'success' ? 'text-[#143f31]' : 'text-[#a43b3b]'}`}>
-              {downloadNotice.type === 'success' ? 'Relatório compartilhado' : 'Erro ao exportar'}
+              {downloadNotice.type === 'success' ? 'Relatório baixado' : 'Erro ao exportar'}
             </strong>
 
             <span className="text-[13px] text-[#59665f]">
-              {downloadNotice.type === 'success' ? 'Arquivo enviado ao aplicativo escolhido.' : 'Não foi possível abrir as opções do relatório.'}
+              {downloadNotice.type === 'success' ? 'Arquivo salvo no celular e pronto para abrir.' : 'Não foi possível baixar ou abrir o relatório.'}
             </span>
 
             {downloadNotice.filename && (
