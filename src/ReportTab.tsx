@@ -1,8 +1,18 @@
 import { useMemo, useState } from 'react'
-import { FiFileText, FiDownload, FiCamera, FiX } from 'react-icons/fi'
+import {
+  FiFileText,
+  FiDownload,
+  FiCamera,
+  FiX,
+  FiAlertTriangle,
+  FiAlertCircle,
+  FiCheckCircle,
+  FiCheck,
+  FiClock,
+} from 'react-icons/fi'
 import ActionIcon from './ActionIcon'
 import { Avatar } from './EmployeePhoto'
-import { hours, timestamp, INPUT_CLASS, LABEL_CLASS, type Employee, type Entry, type Report } from './types'
+import { hours, timestamp, INPUT_CLASS, api, type Employee, type Entry, type Report } from './types'
 import { deliverFile } from './deliverFile'
 
 interface Props {
@@ -13,7 +23,9 @@ interface Props {
   from: string
   to: string
   loadingHistory: boolean
+  token?: string
   onSelectEmployee: (id: string) => void
+  onEntryUpdated?: (updated: Entry) => void
 }
 
 // ─── Geradores de arquivo ─────────────────────────────────────────────────────
@@ -104,9 +116,11 @@ async function buildPdf(report: Report, selected: string) {
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function ReportTab({
-  report, employees, entries, selected, from, to, loadingHistory, onSelectEmployee,
+  report, employees, entries, selected, from, to, loadingHistory, token, onSelectEmployee, onEntryUpdated,
 }: Props) {
-  const [selectedPhoto, setSelectedPhoto] = useState<{ photo: string; title: string; time: string } | null>(null)
+  const [selectedPhoto, setSelectedPhoto] = useState<{ entry: Entry; title: string; time: string } | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const [confirmError, setConfirmError] = useState('')
 
   const rows = useMemo(
     () => report.rows.filter(row => !selected || String(row.id) === selected),
@@ -126,6 +140,31 @@ export default function ReportTab({
         .reverse(),
     [entries, from, to],
   )
+
+  async function handleConfirm(entryId: number) {
+    if (!token) return
+    setConfirming(true)
+    setConfirmError('')
+    try {
+      const updated = await api<Entry>(`/entries/${entryId}/confirm`, {}, token)
+      if (selectedPhoto && selectedPhoto.entry.id === entryId) {
+        setSelectedPhoto({
+          ...selectedPhoto,
+          entry: {
+            ...selectedPhoto.entry,
+            admin_confirmed: true,
+            admin_confirmed_at: updated?.admin_confirmed_at || new Date().toISOString(),
+            divergence_status: 'confirmed',
+          },
+        })
+      }
+      onEntryUpdated?.(updated)
+    } catch (err) {
+      setConfirmError(err instanceof Error ? err.message : 'Falha ao confirmar batida.')
+    } finally {
+      setConfirming(false)
+    }
+  }
 
   function exportCsv() { void deliverFile(buildCsv(report, selected), `horas-${report.from}-${report.to}.csv`) }
   function exportExcel() { void deliverFile(buildExcel(report, selected), `relatorio-horas-${report.from}-${report.to}.xls`) }
@@ -211,7 +250,30 @@ export default function ReportTab({
                     <strong className="block text-xs text-[#143f31]">
                       {entry.kind}{entry.break_name ? ` · ${entry.break_name}` : ''}
                     </strong>
-                    <span className="block text-[11px] text-[#82958b]">{timestamp(entry.occurred_at)}</span>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[11px] text-[#82958b]">{timestamp(entry.occurred_at)}</span>
+                      {entry.admin_confirmed || entry.divergence_status === 'confirmed' ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#dcfce7] px-2 py-0.5 text-[10px] font-bold text-[#166534]">
+                          <FiCheckCircle size={10} /> Confirmado
+                        </span>
+                      ) : entry.divergence_status === 'divergence' ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#fef3c7] px-2 py-0.5 text-[10px] font-bold text-[#92400e]" title={entry.divergence_reason || undefined}>
+                          <FiAlertTriangle size={10} /> Sugestão de divergência
+                        </span>
+                      ) : entry.divergence_status === 'no_face' ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#fee2e2] px-2 py-0.5 text-[10px] font-bold text-[#991b1b]" title={entry.divergence_reason || undefined}>
+                          <FiAlertCircle size={10} /> Sem rosto
+                        </span>
+                      ) : entry.divergence_status === 'ok' ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#f0fdf4] px-2 py-0.5 text-[10px] font-semibold text-[#15803d]">
+                          <FiCheck size={10} /> Rosto OK
+                        </span>
+                      ) : entry.divergence_status === 'pending' ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-medium text-[#4b5563]">
+                          <FiClock size={10} /> Analisando…
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
                 {entry.punch_photo ? (
@@ -219,7 +281,7 @@ export default function ReportTab({
                     type="button"
                     onClick={() =>
                       setSelectedPhoto({
-                        photo: entry.punch_photo!,
+                        entry,
                         title: `${entry.kind}${entry.break_name ? ` · ${entry.break_name}` : ''}`,
                         time: timestamp(entry.occurred_at),
                       })
@@ -248,20 +310,22 @@ export default function ReportTab({
       {selectedPhoto && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
-          onClick={() => setSelectedPhoto(null)}
+          onClick={() => { setSelectedPhoto(null); setConfirmError('') }}
         >
           <div
-            className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
+            className="relative w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-[#edf0ee] pb-3">
               <div>
                 <h4 className="text-sm font-bold text-[#143f31]">{selectedPhoto.title}</h4>
-                <p className="text-[11px] text-[#82958b]">{selectedPhoto.time}</p>
+                <p className="text-[11px] text-[#82958b]">
+                  {selectedEmployee?.name} · {selectedPhoto.time}
+                </p>
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedPhoto(null)}
+                onClick={() => { setSelectedPhoto(null); setConfirmError('') }}
                 className="rounded-lg p-1.5 text-[#527566] transition hover:bg-[#edf0ee]"
                 aria-label="Fechar"
               >
@@ -269,21 +333,118 @@ export default function ReportTab({
               </button>
             </div>
 
-            <div className="mt-4 flex max-h-[380px] items-center justify-center overflow-hidden rounded-xl border border-[#cbded2] bg-neutral-900">
-              <img
-                src={selectedPhoto.photo}
-                alt={`Foto da batida ${selectedPhoto.title}`}
-                className="max-h-[380px] w-full object-contain"
-              />
-            </div>
+            {/* Comparação de Fotos */}
+            {selectedEmployee?.photo ? (
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div>
+                  <span className="mb-1 block text-center text-[11px] font-bold text-[#315847]">
+                    Foto na batida
+                  </span>
+                  <div className="flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-[#cbded2] bg-neutral-900 shadow-inner">
+                    <img
+                      src={selectedPhoto.entry.punch_photo!}
+                      alt="Foto na batida"
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <span className="mb-1 block text-center text-[11px] font-bold text-[#315847]">
+                    Foto cadastrada
+                  </span>
+                  <div className="flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-[#cbded2] bg-neutral-900 shadow-inner">
+                    <img
+                      src={selectedEmployee.photo}
+                      alt="Foto cadastrada do funcionário"
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 flex max-h-[320px] items-center justify-center overflow-hidden rounded-xl border border-[#cbded2] bg-neutral-900">
+                <img
+                  src={selectedPhoto.entry.punch_photo!}
+                  alt={`Foto da batida ${selectedPhoto.title}`}
+                  className="max-h-[320px] w-full object-contain"
+                />
+              </div>
+            )}
 
-            <button
-              type="button"
-              onClick={() => setSelectedPhoto(null)}
-              className="mt-4 w-full rounded-xl bg-[#2a674f] py-2.5 text-xs font-bold text-white transition hover:bg-[#1e4d3a]"
-            >
-              Fechar
-            </button>
+            {/* Status e sugestão da IA */}
+            {selectedPhoto.entry.divergence_status === 'divergence' && !selectedPhoto.entry.admin_confirmed && (
+              <div className="mt-3.5 rounded-xl border border-[#f59e0b]/40 bg-[#fffbeb] p-3 text-xs text-[#92400e]">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <FiAlertTriangle size={15} /> Sugestão de possível divergência
+                </div>
+                <p className="mt-1 text-[11px] leading-relaxed text-[#78350f]">
+                  {selectedPhoto.entry.divergence_reason || 'A imagem registrada pode pertencer a outra pessoa ou apresentar inconsistência facial.'}
+                </p>
+              </div>
+            )}
+
+            {selectedPhoto.entry.divergence_status === 'no_face' && !selectedPhoto.entry.admin_confirmed && (
+              <div className="mt-3.5 rounded-xl border border-[#f87171]/40 bg-[#fef2f2] p-3 text-xs text-[#991b1b]">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <FiAlertCircle size={15} /> Nenhum rosto humano identificado
+                </div>
+                <p className="mt-1 text-[11px] leading-relaxed text-[#7f1d1d]">
+                  {selectedPhoto.entry.divergence_reason || 'A câmera pode ter sido coberta ou apontada para outro local.'}
+                </p>
+              </div>
+            )}
+
+            {(selectedPhoto.entry.admin_confirmed || selectedPhoto.entry.divergence_status === 'confirmed') && (
+              <div className="mt-3.5 rounded-xl border border-[#86efac]/50 bg-[#f0fdf4] p-3 text-center text-xs font-bold text-[#166534]">
+                <div className="flex items-center justify-center gap-1.5">
+                  <FiCheckCircle size={16} /> Confirmado pelo administrador
+                </div>
+                {selectedPhoto.entry.admin_confirmed_at && (
+                  <span className="mt-0.5 block text-[10px] font-normal text-[#15803d]">
+                    Validado em {timestamp(selectedPhoto.entry.admin_confirmed_at)}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {selectedPhoto.entry.divergence_status === 'ok' && !selectedPhoto.entry.admin_confirmed && (
+              <div className="mt-3.5 rounded-xl border border-[#86efac]/40 bg-[#f0fdf4] p-2.5 text-center text-xs font-semibold text-[#166534]">
+                <FiCheck size={14} className="mr-1 inline" /> Rosto identificado e validado
+              </div>
+            )}
+
+            {selectedPhoto.entry.divergence_status === 'pending' && !selectedPhoto.entry.admin_confirmed && (
+              <div className="mt-3.5 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] p-2.5 text-center text-xs font-semibold text-[#4b5563]">
+                <FiClock size={14} className="mr-1 inline" /> Análise biométrica da IA em processamento…
+              </div>
+            )}
+
+            {confirmError && (
+              <p className="mt-2 text-center text-xs text-[#b91c1c]">{confirmError}</p>
+            )}
+
+            {/* Ações do Administrador */}
+            <div className="mt-4 grid gap-2">
+              {token && !selectedPhoto.entry.admin_confirmed && selectedPhoto.entry.divergence_status !== 'confirmed' && (
+                <button
+                  type="button"
+                  onClick={() => handleConfirm(selectedPhoto.entry.id)}
+                  disabled={confirming}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#1e5944] py-2.5 text-xs font-bold text-white transition hover:bg-[#143f31] disabled:opacity-50"
+                >
+                  <FiCheckCircle size={15} />
+                  {confirming ? 'Confirmando…' : 'Administrador confirma batida'}
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => { setSelectedPhoto(null); setConfirmError('') }}
+                className="w-full rounded-xl bg-[#f0f4f1] py-2.5 text-xs font-bold text-[#315847] transition hover:bg-[#e4ede6]"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}

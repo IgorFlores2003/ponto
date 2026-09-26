@@ -39,7 +39,7 @@ export default function Terminal() {
     setReceipt(null)
     pending.current ||= crypto.randomUUID()
     try {
-      const photo = await captureFrontPhoto()
+      const { photo, faceDetected } = await captureFrontPhoto()
       setReceipt(
         await api('/terminal/punch', {
           pin,
@@ -47,6 +47,7 @@ export default function Terminal() {
           interval_type: kind === 'start_break' ? intervalType : undefined,
           request_id: pending.current,
           photo,
+          client_face_detected: faceDetected,
         }),
       )
       pending.current = null

@@ -238,7 +238,11 @@ export default function AdminPanel({ token, onExit }: Props) {
                   from={from}
                   to={to}
                   loadingHistory={loadingHistory}
+                  token={token}
                   onSelectEmployee={setSelected}
+                  onEntryUpdated={updated =>
+                    setEntries(prev => prev.map(e => (e.id === updated.id ? { ...e, ...updated } : e)))
+                  }
                 />
               )}
             </>

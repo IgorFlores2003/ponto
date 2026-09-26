@@ -1,11 +1,37 @@
+export interface PhotoCaptureResult {
+  photo: string | null
+  faceDetected: boolean | null
+}
+
+/**
+ * Tenta detectar se há um rosto humano no canvas usando a API nativa FaceDetector do navegador, se disponível.
+ */
+async function detectFaceClient(canvas: HTMLCanvasElement): Promise<boolean | null> {
+  if (typeof window !== 'undefined' && 'FaceDetector' in window) {
+    try {
+      const FaceDetectorClass = (window as unknown as {
+        FaceDetector: new (opts?: { fastMode?: boolean; maxDetectedFaces?: number }) => {
+          detect: (source: ImageBitmapSource) => Promise<Array<unknown>>
+        }
+      }).FaceDetector
+      const detector = new FaceDetectorClass({ fastMode: true, maxDetectedFaces: 1 })
+      const faces = await detector.detect(canvas)
+      return faces.length > 0
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 /**
  * Captura uma foto silenciosa usando a câmera frontal do dispositivo.
- * Não exibe interface visual para o usuário e não interrompe o fluxo
+ * Não exibe interface visual para o colaborador e não interrompe o fluxo
  * caso a câmera não esteja disponível ou sem permissão.
  */
-export async function captureFrontPhoto(): Promise<string | null> {
+export async function captureFrontPhoto(): Promise<PhotoCaptureResult> {
   if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-    return null
+    return { photo: null, faceDetected: null }
   }
 
   let stream: MediaStream | null = null
@@ -64,7 +90,7 @@ export async function captureFrontPhoto(): Promise<string | null> {
 
     const width = video.videoWidth || 480
     const height = video.videoHeight || 640
-    if (width === 0 || height === 0) return null
+    if (width === 0 || height === 0) return { photo: null, faceDetected: null }
 
     const canvas = document.createElement('canvas')
     const maxDim = 480
@@ -73,15 +99,19 @@ export async function captureFrontPhoto(): Promise<string | null> {
     canvas.height = Math.round(height * scale)
 
     const ctx = canvas.getContext('2d')
-    if (!ctx) return null
+    if (!ctx) return { photo: null, faceDetected: null }
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
+    // Verifica se existe um rosto localmente no cliente (se suportado)
+    const faceDetected = await detectFaceClient(canvas)
+
     // Gera JPEG otimizado (~20-40 KB)
-    return canvas.toDataURL('image/jpeg', 0.65)
+    const photo = canvas.toDataURL('image/jpeg', 0.65)
+    return { photo, faceDetected }
   } catch (err) {
     // Falha silenciosa proposital para não impedir o registro de ponto
     console.warn('Captura silenciosa indisponível:', err)
-    return null
+    return { photo: null, faceDetected: null }
   } finally {
     if (stream) {
       stream.getTracks().forEach(track => track.stop())

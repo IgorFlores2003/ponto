@@ -12,7 +12,9 @@ test('permissões, PIN exclusivo, batidas, relatório e sessões', async () => {
   try {
     await db.migrate.latest()
     await createAdmin(db, 'admin', 'senha-segura-123')
-    server = createApp(db).listen(0, '127.0.0.1')
+    server = createApp(db, {
+      analyzer: async () => ({ face_detected: true, divergence_status: 'ok', divergence_reason: 'Rosto validado.' }),
+    }).listen(0, '127.0.0.1')
     await new Promise((resolve, reject) => { server.once('listening', resolve); server.once('error', reject) })
     const base = `http://127.0.0.1:${server.address().port}/api`
     async function request(path, body, token) {
@@ -61,6 +63,10 @@ test('permissões, PIN exclusivo, batidas, relatório e sessões', async () => {
     const igorEntries = (await request(`/employees/${igor.data.id}/entries`, undefined, token)).data
     assert.equal(igorEntries.length, 1)
     assert.equal(igorEntries[0].punch_photo, photo)
+    const confirmRes = await request(`/entries/${igorEntries[0].id}/confirm`, {}, token)
+    assert.equal(confirmRes.status, 200)
+    assert.ok(confirmRes.data.admin_confirmed)
+    assert.equal(confirmRes.data.divergence_status, 'confirmed')
     async function ageLast() { const last = await db('entries').where({ employee_id: igor.data.id }).orderBy('id', 'desc').first(); await db('entries').where({ id: last.id }).update({ occurred_at: new Date(Date.now() - 10000).toISOString() }) }
     await ageLast(); assert.equal((await punch('1234', { kind: 'Início do intervalo' })).data.kind, 'Início do intervalo')
     await ageLast(); assert.equal((await punch('1234')).data.kind, 'Fim do intervalo')

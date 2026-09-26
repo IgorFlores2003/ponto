@@ -1,5 +1,6 @@
 import express from 'express'
 import { validPhoto } from './photos.js'
+import { analyzePunchPhoto } from './gemini.js'
 import { parseDuration } from './durations.js'
 import { matchingBreak, validRule, localDateTime } from './breaks.js'
 import { randomBytes } from 'node:crypto'
@@ -12,7 +13,7 @@ function validWorkdays(days) { return Array.isArray(days) && days.every(day => N
 export const transitions = { 'Entrada': ['Saída do almoço', 'Saída', 'Início do intervalo'], 'Saída do almoço': ['Entrada do almoço'], 'Entrada do almoço': ['Saída', 'Início do intervalo'], 'Início do intervalo': ['Fim do intervalo'], 'Fim do intervalo': ['Saída', 'Início do intervalo'], 'Saída': ['Entrada'] }
 const columns = ['id', 'name', 'registration', 'department', 'job_title', 'photo', 'target_hours', 'work_minutes', 'break_minutes', 'workdays', 'created_at']
 const publicEmployee = employee => ({ ...Object.fromEntries(columns.map(key => [key, employee[key]])), active: !!employee.active, has_pin: !!employee.pin_digest })
-export function createApp(db, { clock = () => new Date() } = {}) {
+export function createApp(db, { clock = () => new Date(), analyzer = analyzePunchPhoto } = {}) {
   const app = express()
   const dummyHash = hashPassword(randomBytes(24).toString('hex'))
   app.use((req, res, next) => {
@@ -35,7 +36,7 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     res.json({ token, expires_at, username: admin.username })
   })
   app.post('/api/terminal/punch', rateLimit(db, 'pin', 30, 60000), async (req, res) => {
-    const { pin, kind = 'auto', interval_type, request_id, photo = null } = req.body || {}
+    const { pin, kind = 'auto', interval_type, request_id, photo = null, client_face_detected = null } = req.body || {}
     if (typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'Informe um PIN de 4 números.' })
     if (typeof request_id !== 'string' || !/^[a-f0-9-]{36}$/i.test(request_id)) return res.status(400).json({ error: 'Identificador de batida inválido.' })
     if (photo && !validPhoto(photo)) return res.status(400).json({ error: 'Foto de batida inválida.' })
@@ -43,6 +44,20 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     if (['start_break', 'interval'].includes(kind) && !['lunch', 'coffee'].includes(interval_type)) return res.status(400).json({ error: 'Selecione almoço ou café.' })
     const employee = await db('employees').where({ pin_digest: await pinDigest(db, pin) }).first()
     if (!employee) return res.status(401).json({ error: 'PIN inválido.' })
+    const punch_photo = photo && validPhoto(photo) ? photo : null
+    const face_detected = typeof client_face_detected === 'boolean' ? client_face_detected : null
+    let divergence_status = null
+    let divergence_reason = null
+    if (punch_photo) {
+      if (face_detected === false) {
+        divergence_status = 'no_face'
+        divergence_reason = 'Nenhum rosto identificado na captura da câmera.'
+      } else if (process.env.GEMINI_API_KEY) {
+        divergence_status = 'pending'
+      } else {
+        divergence_status = 'ok'
+      }
+    }
     const result = await db.transaction(async trx => {
       const query = trx('employees').where({ id: employee.id })
       if (trx.client.config.client === 'pg') query.forUpdate()
@@ -67,12 +82,47 @@ export function createApp(db, { clock = () => new Date() } = {}) {
       if (!(last ? transitions[last.kind] || [] : ['Entrada']).includes(next)) return null
       // Evita que dois envios simultâneos gerem entrada e saída acidentais.
       if (last && now.getTime() - Date.parse(last.occurred_at) < 5000) return null
-      const punch_photo = photo && validPhoto(photo) ? photo : null
-      const [{ id }] = await trx('entries').insert({ employee_id: employee.id, kind: next, occurred_at: now.toISOString(), request_id, punch_photo, ...breakInfo }).returning('id')
+      const [{ id }] = await trx('entries').insert({
+        employee_id: employee.id,
+        kind: next,
+        occurred_at: now.toISOString(),
+        request_id,
+        punch_photo,
+        face_detected,
+        divergence_status,
+        divergence_reason,
+        admin_confirmed: false,
+        ...breakInfo,
+      }).returning('id')
       return trx('entries').where({ id }).first()
     })
     if (result?.inactive) return res.status(403).json({ error: 'Funcionário desativado. Procure o administrador.' })
     if (!result) return res.status(409).json({ error: 'Batida incompatível com a jornada ou registrada há poucos segundos. Confira o tipo e aguarde 5 segundos.' })
+
+    // Se houver foto e chave Gemini, roda análise assíncrona sem travar a resposta para o funcionário
+    if (punch_photo && process.env.GEMINI_API_KEY && result.id && result.divergence_status === 'pending') {
+      void (async () => {
+        try {
+          const analysis = await analyzer({
+            punchPhoto: punch_photo,
+            employeePhoto: employee.photo,
+          })
+          if (analysis) {
+            await db('entries').where({ id: result.id }).update({
+              face_detected: analysis.face_detected,
+              divergence_status: analysis.divergence_status,
+              divergence_reason: analysis.divergence_reason,
+            })
+          }
+        } catch (err) {
+          // Em testes ou quando o banco fecha antes da requisição externa terminar
+          if (!/connection|closed|pool/i.test(err?.message || '')) {
+            console.warn('Erro ao processar análise para batida', result.id, err?.message || err)
+          }
+        }
+      })()
+    }
+
     res.json({ employee_name: employee.name, kind: result.kind, break_name: result.break_name, occurred_at: result.occurred_at })
   })
   app.get('/api/terminal/break-rules', async (req, res) => {
@@ -270,7 +320,19 @@ export function createApp(db, { clock = () => new Date() } = {}) {
     try { await db('employees').where({ id: res.locals.employeeId }).update({ pin_digest: await pinDigest(db, pin) }); res.sendStatus(204) }
     catch (error) { if (['SQLITE_CONSTRAINT_UNIQUE', '23505'].includes(error.code)) return res.status(409).json({ error: 'PIN já utilizado por outro funcionário.' }); throw error }
   })
-  app.get('/api/employees/:id/entries', async (req, res) => res.json(await db('entries').select('id', 'employee_id', 'kind', 'occurred_at', 'break_name', 'punch_photo').where({ employee_id: res.locals.employeeId }).orderBy('id')))
+  app.get('/api/employees/:id/entries', async (req, res) => res.json(await db('entries').select('id', 'employee_id', 'kind', 'occurred_at', 'break_name', 'punch_photo', 'face_detected', 'divergence_status', 'divergence_reason', 'admin_confirmed', 'admin_confirmed_at').where({ employee_id: res.locals.employeeId }).orderBy('id')))
+  app.post('/api/entries/:id/confirm', async (req, res) => {
+    const id = Number(req.params.id)
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Batida inválida.' })
+    const entry = await db('entries').where({ id }).first()
+    if (!entry) return res.status(404).json({ error: 'Batida não encontrada.' })
+    await db('entries').where({ id }).update({
+      admin_confirmed: true,
+      admin_confirmed_at: new Date().toISOString(),
+      divergence_status: 'confirmed',
+    })
+    res.json(await db('entries').where({ id }).first())
+  })
   app.use('/api', (req, res) => res.status(404).json({ error: 'Rota não encontrada.' }))
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error)

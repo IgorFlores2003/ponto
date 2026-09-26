@@ -19,10 +19,16 @@ export type Employee = {
 
 export type Entry = {
   id: number
+  employee_id?: number
   kind: string
   break_name?: string | null
   occurred_at: string
   punch_photo?: string | null
+  face_detected?: boolean | null
+  divergence_status?: 'ok' | 'divergence' | 'no_face' | 'pending' | 'confirmed' | null
+  divergence_reason?: string | null
+  admin_confirmed?: boolean
+  admin_confirmed_at?: string | null
 }
 
 export type ReportRow = Employee & {
