@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { FiX, FiCheckCircle, FiAlertTriangle, FiAlertCircle, FiCheck, FiClock, FiXCircle } from 'react-icons/fi'
+import { FiCheckCircle, FiAlertTriangle, FiAlertCircle, FiCheck, FiClock, FiXCircle } from 'react-icons/fi'
+import FormModal from './FormModal'
 import { api, timestamp, type Employee, type Entry } from './types'
 
 interface Props {
@@ -94,33 +95,17 @@ export default function PunchPhotoModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
-      onClick={onClose}
-    >
-      <div
-        className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-[#edf0ee] pb-3">
-          <div>
-            <h4 className="text-sm font-bold text-[#143f31]">{title}</h4>
-            <p className="text-[11px] text-[#82958b]">
-              {employee?.name} · {time}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-[#527566] transition hover:bg-[#edf0ee]"
-            aria-label="Fechar"
-          >
-            <FiX size={18} />
-          </button>
+    <FormModal title="Conferir foto da batida" busy={confirming} onClose={onClose}>
+      <div className="min-w-0 [overflow-wrap:anywhere]">
+        <div className="border-b border-[#edf0ee] pb-3">
+          <h4 className="text-sm font-bold text-[#143f31]">{title}</h4>
+          <p className="text-[11px] text-[#82958b]">{employee?.name} · {time}</p>
         </div>
 
         {/* Comparação de Fotos - Imagens inteiras sem corte */}
-        {employee?.photo ? (
+        {!currentEntry.punch_photo ? (
+          <p className="mt-4 rounded-xl bg-[#fff0f0] p-3 text-xs text-[#913939]">Foto da batida indisponível. Confira os dados do registro antes de decidir.</p>
+        ) : employee?.photo ? (
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div>
               <span className="mb-1 block text-center text-[11px] font-bold text-[#315847]">
@@ -180,7 +165,7 @@ export default function PunchPhotoModal({
           </div>
         )}
 
-        {(currentEntry.admin_confirmed || currentEntry.divergence_status === 'confirmed') && (
+        {currentEntry.divergence_status !== 'rejected' && (currentEntry.admin_confirmed || currentEntry.divergence_status === 'confirmed') && (
           <div className="mt-3.5 rounded-xl border border-[#86efac]/50 bg-[#f0fdf4] p-3 text-center text-xs font-bold text-[#166534]">
             <div className="flex items-center justify-center gap-1.5">
               <FiCheckCircle size={16} /> Confirmado pelo administrador
@@ -252,12 +237,13 @@ export default function PunchPhotoModal({
           <button
             type="button"
             onClick={onClose}
+            disabled={confirming}
             className="w-full rounded-xl bg-[#f0f4f1] py-2.5 text-xs font-bold text-[#315847] transition hover:bg-[#e4ede6]"
           >
             Fechar
           </button>
         </div>
       </div>
-    </div>
+    </FormModal>
   )
 }

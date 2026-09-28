@@ -2,13 +2,18 @@ import { validDate } from './reports.js'
 import { parseDuration } from './durations.js'
 
 export function planScheduleEvents(body = {}) {
-  const { event_date, kind, title, employee_id = null, repeat = 'once', starts_at = '', ends_at = '', break_time = '00:00' } = body
-  if (!validDate(event_date) || !['Feriado', 'Folga', 'Emenda', 'Trabalho', 'Trabalho extra'].includes(kind) ||
+  const { event_date, kind, title, employee_id = null, repeat = 'once', starts_at = '', ends_at = '', break_time = '00:00', end_date = event_date } = body
+  if (!validDate(event_date) || !['Feriado', 'Folga', 'Emenda', 'Trabalho', 'Trabalho extra', 'Atestado'].includes(kind) ||
     typeof title !== 'string' || !title.trim() || title.trim().length > 120 ||
     !['once', 'weekly', 'fortnightly'].includes(repeat) ||
     (employee_id !== null && (!Number.isSafeInteger(employee_id) || employee_id <= 0))) {
     throw new Error('Informe data, pessoa, tipo, descrição e repetição válidos.')
   }
+  if (kind === 'Atestado' && (employee_id === null || repeat !== 'once' || !validDate(end_date) || end_date < event_date ||
+    Date.parse(end_date) - Date.parse(event_date) > 365 * 86400000)) {
+    throw new Error('Selecione um funcionário e um período de atestado de até 366 dias, sem repetição.')
+  }
+  if (kind !== 'Atestado' && end_date !== event_date) throw new Error('O período final é permitido somente para atestado.')
   let hours = { starts_at: null, ends_at: null, work_minutes: null, break_minutes: null }
   if (starts_at || ends_at) {
     const isWork = ['Trabalho', 'Trabalho extra'].includes(kind)
@@ -23,11 +28,11 @@ export function planScheduleEvents(body = {}) {
     hours = { starts_at, ends_at, work_minutes: duration - pause, break_minutes: pause }
   }
   const result = []
-  const step = repeat === 'weekly' ? 7 : 14
+  const step = kind === 'Atestado' ? 1 : repeat === 'weekly' ? 7 : 14
   let date = event_date
-  while (date.slice(0, 7) === event_date.slice(0, 7)) {
+  while (kind === 'Atestado' ? date <= end_date : date.slice(0, 7) === event_date.slice(0, 7)) {
     result.push({ event_date: date, kind, title: title.trim(), employee_id, ...hours })
-    if (repeat === 'once') break
+    if (repeat === 'once' && kind !== 'Atestado') break
     date = new Date(Date.parse(`${date}T12:00:00Z`) + step * 86400000).toISOString().slice(0, 10)
   }
   return result

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { FiSmartphone, FiLogOut, FiRefreshCw } from 'react-icons/fi'
+import EntryNotifications from './EntryNotifications'
 import BottomNav from './BottomNav'
 import SuccessToast from './SuccessToast'
 import EmployeeList from './EmployeeList'
@@ -147,22 +148,28 @@ export default function AdminPanel({ token, onExit }: Props) {
     setTab('relatorios')
   }
 
-  const isReportOrDashboard = tab === 'dashboard' || tab === 'relatorios'
+  function entryUpdated(updated: Entry) {
+    setEntries(prev => prev.map(entry => entry.id === updated.id ? { ...entry, ...updated } : entry))
+    setVersion(value => value + 1)
+  }
 
   return (
     <>
       {downloadNotice && <DownloadToast notice={downloadNotice} onClose={() => setDownloadNotice(null)} />}
 
       {/* Barra superior */}
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <a href="#/terminal" className="flex items-center gap-1.5 text-xs font-bold text-[#317455] hover:text-[#173d2f]">
           <FiSmartphone size={16} aria-hidden="true" /> Terminal de ponto
         </a>
-        <button type="button" disabled={busy}
-          className="flex items-center gap-1 bg-transparent text-xs font-bold text-[#317455] hover:text-[#173d2f] disabled:opacity-55"
-          onClick={logout}>
-          <FiLogOut size={14} aria-hidden="true" /> Sair da conta
-        </button>
+        <div className="flex items-center gap-3">
+          <EntryNotifications token={token} version={version} onUnauthorized={onExit} onEntryUpdated={entryUpdated} />
+          <button type="button" disabled={busy}
+            className="flex items-center gap-1 bg-transparent text-xs font-bold text-[#317455] hover:text-[#173d2f] disabled:opacity-55"
+            onClick={logout}>
+            <FiLogOut size={14} aria-hidden="true" /> Sair da conta
+          </button>
+        </div>
       </div>
 
       <BottomNav active={tab} onChange={setTab} />
@@ -255,9 +262,7 @@ export default function AdminPanel({ token, onExit }: Props) {
                   loadingHistory={loadingHistory}
                   token={token}
                   onSelectEmployee={setSelected}
-                  onEntryUpdated={updated =>
-                    setEntries(prev => prev.map(e => (e.id === updated.id ? { ...e, ...updated } : e)))
-                  }
+                  onEntryUpdated={entryUpdated}
                 />
               )}
             </>

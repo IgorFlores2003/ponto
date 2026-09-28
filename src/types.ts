@@ -7,6 +7,7 @@ export type Employee = {
   department: string
   job_title: string
   photo: string | null
+  overtime_rate_cents: number | null
   target_hours: number
   work_minutes: number
   break_minutes: number
@@ -32,6 +33,12 @@ export type Entry = {
 }
 
 export type ReportRow = Employee & {
+  overtime_pay_cents: number | null
+  off_day_work_seconds: number
+  excused_seconds: number
+  fulfilled_seconds: number
+  current_excused_seconds: number
+  current_off_day: boolean
   work_seconds: number
   break_seconds: number
   expected_seconds: number
@@ -114,3 +121,7 @@ export async function api<T>(path: string, body?: unknown, token?: string): Prom
 
 export const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Não foi possível acessar o servidor.'
+
+export const money = (cents: number | null | undefined) => cents == null
+  ? 'Não cadastrado'
+  : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100)

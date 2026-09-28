@@ -23,7 +23,7 @@ interface Props {
 const EMPTY_FORM = {
   name: '', registration: '', department: '', job_title: '',
   photo: null as string | null,
-  work_time: '07:20', break_time: '01:00',
+  work_time: '07:20', break_time: '01:00', overtime_rate: '',
   workdays: [1, 2, 3, 4, 5] as number[], pin: '',
 }
 
@@ -112,7 +112,7 @@ export default function EmployeeList({
 
   return (
     <>
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-['Manrope',sans-serif] text-xl font-bold tracking-tight text-[#143f31]">
           Equipe ({employees.length})
         </h2>
@@ -175,6 +175,12 @@ export default function EmployeeList({
                   onChange={e => setForm({ ...form, break_time: e.target.value })} />
               </label>
               <label className={LABEL_CLASS}>
+                Valor da hora extra (R$/h)
+                <input inputMode="decimal" pattern="[0-9]{1,6}([.,][0-9]{1,2})?" placeholder="Ex.: 25,50" value={form.overtime_rate}
+                  className={INPUT_CLASS} onChange={e => setForm({ ...form, overtime_rate: e.target.value })} />
+                <span className="font-normal">Valor final por hora trabalhada na folga. Opcional.</span>
+              </label>
+              <label className={LABEL_CLASS}>
                 PIN exclusivo de 4 números
                 <PasswordInput required inputMode="numeric" pattern="[0-9]{4}" maxLength={4}
                   autoComplete="new-password" value={form.pin} className={INPUT_CLASS}
@@ -203,11 +209,11 @@ export default function EmployeeList({
       )}
 
       {/* Lista de funcionários */}
-      <div className="divide-y divide-[#e2ebe5]">
+      <div className="min-w-0 divide-y divide-[#e2ebe5]">
         {employees.map(employee => (
-          <div className="flex flex-wrap items-center justify-between gap-3 py-4" key={employee.id}>
+          <div className="flex min-w-0 flex-col items-stretch gap-3 py-4" key={employee.id}>
             <div className="min-w-0">
-              <strong className="text-sm font-semibold text-[#143f31]">{employee.name}</strong>
+              <strong className="block min-w-0 [overflow-wrap:anywhere] text-sm font-semibold text-[#143f31]">{employee.name}</strong>
               <p className="mt-0.5 text-xs text-[#789185]">
                 {employee.active ? 'Ativo' : 'Desativado · novas batidas bloqueadas'}
               </p>
@@ -238,7 +244,7 @@ export default function EmployeeList({
                 {employee.has_pin ? 'PIN cadastrado' : 'PIN pendente: defina para liberar as batidas'}
               </p>
             </div>
-            <div className="flex shrink-0 items-center gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-3">
               <button className="flex items-center gap-1 bg-transparent text-xs font-bold text-[#317455] hover:text-[#173d2f]"
                 onClick={() => onHistory(employee.id)}>
                 <FiClock size={13} aria-hidden="true" /> Histórico
@@ -267,7 +273,7 @@ export default function EmployeeList({
       {/* Formulário de PIN */}
       {pinEmployee && (
         <form className="mt-5 grid gap-3.5 rounded-2xl bg-[#eaf1ed] p-5" onSubmit={savePin}>
-          <h3 className="text-sm font-semibold text-[#143f31]">
+          <h3 className="min-w-0 [overflow-wrap:anywhere] text-sm font-semibold text-[#143f31]">
             Definir PIN de {employees.find(e => String(e.id) === pinEmployee)?.name}
           </h3>
           <label className={LABEL_CLASS}>

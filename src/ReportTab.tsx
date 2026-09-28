@@ -6,7 +6,7 @@ import DivergenceBadge from './DivergenceBadge'
 import PunchPhotoModal from './PunchPhotoModal'
 import { buildCsv, buildExcel, buildPdf } from './reportExports'
 import { deliverFile } from './deliverFile'
-import { hours, timestamp, INPUT_CLASS, type Employee, type Entry, type Report } from './types'
+import { hours, money, timestamp, INPUT_CLASS, type Employee, type Entry, type Report } from './types'
 
 interface Props {
   report: Report
@@ -122,6 +122,11 @@ export default function ReportTab({
               <th className="px-2.5 py-3.5">Funcionário</th>
               <th className="px-2.5 py-3.5">Previstas</th>
               <th className="px-2.5 py-3.5">Serviço</th>
+              <th className="px-2.5 py-3.5">Abonadas (atestado)</th>
+              <th className="px-2.5 py-3.5">Total cumprido</th>
+              <th className="px-2.5 py-3.5">Extras na folga</th>
+              <th className="px-2.5 py-3.5">Valor/h extra</th>
+              <th className="px-2.5 py-3.5">Total extras (R$)</th>
               <th className="px-2.5 py-3.5">Devidas</th>
               <th className="px-2.5 py-3.5">Intervalo</th>
               <th className="px-2.5 py-3.5">Batidas</th>
@@ -140,6 +145,11 @@ export default function ReportTab({
                   {hours(Math.floor(row.expected_seconds / 60))}
                 </td>
                 <td className="px-2.5 py-3.5 tabular-nums">{hours(row.minutes)}</td>
+                <td className="px-2.5 py-3.5 tabular-nums">{hours(Math.floor(row.excused_seconds / 60))}</td>
+                <td className="px-2.5 py-3.5 tabular-nums">{hours(Math.floor(row.fulfilled_seconds / 60))}</td>
+                <td className="px-2.5 py-3.5 tabular-nums">{hours(Math.floor(row.off_day_work_seconds / 60))}</td>
+                <td className="px-2.5 py-3.5 tabular-nums">{money(row.overtime_rate_cents)}</td>
+                <td className="px-2.5 py-3.5 tabular-nums">{money(row.overtime_pay_cents)}</td>
                 <td className={`px-2.5 py-3.5 font-bold tabular-nums ${row.debt_seconds ? 'text-[#a24636]' : ''}`}>
                   {hours(Math.floor(row.debt_seconds / 60))}
                 </td>
@@ -217,7 +227,7 @@ export default function ReportTab({
       )}
 
       <p className="mt-6 text-[11px] leading-relaxed text-[#82958b]">
-        Inclui jornadas em andamento e desconta intervalos. Horário de Brasília.{' '}
+        Inclui jornadas em andamento e desconta intervalos. Total cumprido = trabalhadas + atestado. O atestado conta para cumprir as horas previstas. Extras na folga fazem parte do serviço e não compensam horas devidas de outros dias. Total extras = horas na folga × valor/h atual do funcionário, proporcional aos segundos e arredondado em centavos. Horário de Brasília.{' '}
         Atualizado em {timestamp(report.generated_at)}.
       </p>
 

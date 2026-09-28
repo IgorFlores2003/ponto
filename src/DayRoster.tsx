@@ -22,7 +22,7 @@ export default function DayRoster({ date, employees, events, busy, onSave }: Pro
         <h4 className="text-lg font-bold text-[#234c37]">Quem trabalha neste dia?</h4>
       </div>
       <p className="mt-2 mb-3.5 text-[13px] leading-normal text-[#527566]">
-        Marque quem vai trabalhar. Quem ficar desmarcado estará de folga somente nesta data. A seleção inclui toda a equipe.
+        Marque quem vai trabalhar. Quem ficar desmarcado estará de folga somente nesta data. A seleção inclui toda a equipe. Para trabalhar na folga como extra, use “Horário, folga ou atestado” e escolha Trabalho extra.
       </p>
       <fieldset disabled={busy} className="m-0 grid gap-2 border-0 p-0">
         <legend className="mb-2.5 text-xs font-semibold text-[#527566]">
@@ -50,7 +50,7 @@ export default function DayRoster({ date, employees, events, busy, onSave }: Pro
               />
               <span className="flex-1 break-words font-medium">{person.name}</span>
               <strong className={`text-xs ${isWorking ? 'text-[#246841]' : 'text-[#789185]'}`}>
-                {isWorking ? 'Trabalha' : 'Folga'}
+                {isWorking ? (scheduleForDate(person, date, events).reason === 'Trabalho extra' ? 'Trabalho extra' : 'Trabalha') : scheduleForDate(person, date, events).reason === 'Atestado' ? 'Atestado' : 'Folga'}
               </strong>
             </label>
           )

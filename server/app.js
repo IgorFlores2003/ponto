@@ -1,6 +1,7 @@
 import express from 'express'
 import { validPhoto } from './photos.js'
 import { analyzePunchPhoto } from './gemini.js'
+import { parseHourlyRate } from '../shared/money.js'
 import { parseDuration } from './durations.js'
 import { matchingBreak, validRule, localDateTime } from './breaks.js'
 import { randomBytes } from 'node:crypto'
@@ -11,7 +12,7 @@ import { planScheduleEvents } from './schedule-events.js'
 import { scheduleForDate, monthlyScheduleMinutes } from '../shared/schedule.js'
 function validWorkdays(days) { return Array.isArray(days) && days.every(day => Number.isInteger(day) && day >= 0 && day <= 6) && new Set(days).size === days.length }
 export const transitions = { 'Entrada': ['Saída do almoço', 'Saída', 'Início do intervalo'], 'Saída do almoço': ['Entrada do almoço'], 'Entrada do almoço': ['Saída', 'Início do intervalo'], 'Início do intervalo': ['Fim do intervalo'], 'Fim do intervalo': ['Saída', 'Início do intervalo'], 'Saída': ['Entrada'] }
-const columns = ['id', 'name', 'registration', 'department', 'job_title', 'photo', 'target_hours', 'work_minutes', 'break_minutes', 'workdays', 'created_at']
+const columns = ['id', 'name', 'registration', 'department', 'job_title', 'photo', 'target_hours', 'work_minutes', 'break_minutes', 'workdays', 'overtime_rate_cents', 'created_at']
 const publicEmployee = employee => ({ ...Object.fromEntries(columns.map(key => [key, employee[key]])), active: !!employee.active, has_pin: !!employee.pin_digest })
 export function createApp(db, { clock = () => new Date(), analyzer = analyzePunchPhoto } = {}) {
   const app = express()
@@ -108,14 +109,14 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
             employeePhoto: employee.photo,
           })
           if (analysis) {
-            await db('entries').where({ id: result.id }).update({
+            await db('entries').where({ id: result.id, admin_confirmed: false }).update({
               face_detected: analysis.face_detected,
               divergence_status: analysis.divergence_status,
               divergence_reason: analysis.divergence_reason,
             })
           }
         } catch (err) {
-          // Em testes ou quando o banco fecha antes da requisição externa terminar
+          // O banco pode fechar antes da requisição externa terminar
           if (!/connection|closed|pool/i.test(err?.message || '')) {
             console.warn('Erro ao processar análise para batida', result.id, err?.message || err)
           }
@@ -148,14 +149,16 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     res.json(employees.map(employee => ({ ...employee, monthly_month: month, monthly_minutes: monthlyScheduleMinutes(employee, month, events) })))
   })
   app.post('/api/employees', async (req, res) => {
-    const { name, registration, department = '', job_title = '', photo = null, target_hours = 8, work_time, break_time, pin } = req.body || {}
+    const { name, registration, department = '', job_title = '', photo = null, work_time, break_time, pin, overtime_rate = '' } = req.body || {}
+    const overtime_rate_cents = parseHourlyRate(overtime_rate)
+    if (overtime_rate_cents === undefined) return res.status(400).json({ error: 'Informe o valor da hora extra em reais, com até duas casas decimais.' })
     const work_minutes = parseDuration(work_time ?? '08:00')
     const workdays = req.body?.workdays ?? [1, 2, 3, 4, 5]
     const break_minutes = parseDuration(break_time ?? '01:00')
     if (!validPhoto(photo) || typeof name !== 'string' || !name.trim() || name.trim().length > 120 || (registration !== undefined && (typeof registration !== 'string' || registration.trim().length > 40)) || typeof job_title !== 'string' || job_title.trim().length > 120 || typeof department !== 'string' || department.trim().length > 120 || (work_minutes === null || work_minutes < 1 || work_minutes > 1440) || (break_minutes === null || break_minutes < 0 || break_minutes > 720) || !validWorkdays(workdays) || typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'Informe nome, função, serviço (HH:MM), intervalo (HH:MM) e PIN de 4 números.' })
     try {
       const generatedRegistration = registration?.trim() || `FUNC-${Date.now()}-${randomBytes(3).toString('hex')}`
-      const [{ id }] = await db('employees').insert({ name: name.trim(), registration: generatedRegistration, department: department.trim(), job_title: job_title.trim(), photo: photo || null, target_hours: work_minutes / 60, work_minutes, break_minutes, workdays: JSON.stringify(workdays), pin_digest: await pinDigest(db, pin), created_at: new Date().toISOString() }).returning('id')
+      const [{ id }] = await db('employees').insert({ name: name.trim(), registration: generatedRegistration, department: department.trim(), job_title: job_title.trim(), photo: photo || null, target_hours: work_minutes / 60, work_minutes, break_minutes, workdays: JSON.stringify(workdays), overtime_rate_cents, pin_digest: await pinDigest(db, pin), created_at: new Date().toISOString() }).returning('id')
       res.status(201).json(publicEmployee(await db('employees').where({ id }).first()))
     } catch (error) { if (['SQLITE_CONSTRAINT_UNIQUE', '23505'].includes(error.code)) return res.status(409).json({ error: 'Matrícula ou PIN já utilizado por outro funcionário.' }); throw error }
   })
@@ -222,7 +225,7 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
       }
       return trx('schedule_events').leftJoin('employees', 'schedule_events.employee_id', 'employees.id').select(eventColumns).whereIn('schedule_events.id', ids).orderBy('schedule_events.event_date')
     })
-    res.status(201).json(req.body?.repeat ? created : created[0])
+    res.status(201).json(req.body?.repeat || req.body?.kind === 'Atestado' ? created : created[0])
   })
   app.post('/api/schedule-day', async (req, res) => {
     const { event_date, assignments } = req.body || {}
@@ -301,11 +304,13 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     res.sendStatus(204)
   })
   app.post('/api/employees/:id/schedule', async (req, res) => {
-    const { department = '', job_title = '', work_time, break_time, workdays } = req.body || {}
+    const { department = '', job_title = '', work_time, break_time, workdays, overtime_rate } = req.body || {}
+    const overtime_rate_cents = overtime_rate === undefined ? undefined : parseHourlyRate(overtime_rate)
+    if (overtime_rate !== undefined && overtime_rate_cents === undefined) return res.status(400).json({ error: 'Informe o valor da hora extra em reais, com até duas casas decimais.' })
     const work_minutes = parseDuration(work_time)
     const break_minutes = parseDuration(break_time)
     if (typeof department !== 'string' || department.length > 120 || typeof job_title !== 'string' || job_title.length > 120 || work_minutes === null || work_minutes < 1 || work_minutes > 1440 || break_minutes === null || break_minutes < 0 || break_minutes > 720 || !validWorkdays(workdays)) return res.status(400).json({ error: 'Informe função, departamento, serviço e intervalo válidos.' })
-    await db('employees').where({ id: res.locals.employeeId }).update({ department: department.trim(), job_title: job_title.trim(), target_hours: work_minutes / 60, work_minutes, break_minutes, workdays: JSON.stringify(workdays) })
+    await db('employees').where({ id: res.locals.employeeId }).update({ department: department.trim(), job_title: job_title.trim(), target_hours: work_minutes / 60, work_minutes, break_minutes, workdays: JSON.stringify(workdays), ...(overtime_rate !== undefined ? { overtime_rate_cents } : {}) })
     res.sendStatus(204)
   })
   app.post('/api/employees/:id/job-title', async (req, res) => {
@@ -321,6 +326,28 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     catch (error) { if (['SQLITE_CONSTRAINT_UNIQUE', '23505'].includes(error.code)) return res.status(409).json({ error: 'PIN já utilizado por outro funcionário.' }); throw error }
   })
   app.get('/api/employees/:id/entries', async (req, res) => res.json(await db('entries').select('id', 'employee_id', 'kind', 'occurred_at', 'break_name', 'punch_photo', 'face_detected', 'divergence_status', 'divergence_reason', 'admin_confirmed', 'admin_confirmed_at').where({ employee_id: res.locals.employeeId }).orderBy('id')))
+  app.get('/api/entry-alerts', async (req, res) => {
+    const rawPage = req.query.page ?? '1'
+    if (typeof rawPage !== 'string' || !/^[1-9]\d{0,5}$/.test(rawPage)) return res.status(400).json({ error: 'Página inválida.' })
+    const page = Number(rawPage), pageSize = 20
+    const pending = () => db('entries').whereIn('divergence_status', ['divergence', 'no_face'])
+      .where(builder => builder.where('admin_confirmed', false).orWhereNull('admin_confirmed'))
+    const [{ total }, rows] = await Promise.all([
+      pending().count('* as total').first(),
+      pending().join('employees', 'employees.id', 'entries.employee_id')
+        .select('entries.id', 'entries.employee_id', 'entries.kind', 'entries.break_name', 'entries.occurred_at', 'entries.divergence_status', 'entries.divergence_reason', 'employees.name as employee_name')
+        .orderBy('entries.occurred_at', 'desc').orderBy('entries.id', 'desc').limit(pageSize).offset((page - 1) * pageSize),
+    ])
+    res.json({ total: Number(total), page, page_size: pageSize, rows })
+  })
+  app.get('/api/entries/:id', async (req, res) => {
+    const id = Number(req.params.id)
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Batida inválida.' })
+    const entry = await db('entries').where({ id }).first()
+    if (!entry) return res.status(404).json({ error: 'Batida não encontrada.' })
+    const employee = await db('employees').where({ id: entry.employee_id }).first()
+    res.json({ entry, employee: publicEmployee(employee) })
+  })
   app.post('/api/entries/:id/confirm', async (req, res) => {
     const id = Number(req.params.id)
     if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Batida inválida.' })
@@ -352,13 +379,14 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     const entry = await db('entries').where({ id }).first()
     if (!entry) return res.status(404).json({ error: 'Batida não encontrada.' })
     if (!entry.punch_photo) return res.status(400).json({ error: 'Batida sem foto.' })
+    if (entry.admin_confirmed) return res.json(entry)
     const employee = await db('employees').where({ id: entry.employee_id }).first()
     const analysis = await analyzer({
       punchPhoto: entry.punch_photo,
       employeePhoto: employee?.photo,
     })
     if (analysis) {
-      await db('entries').where({ id }).update({
+      await db('entries').where({ id, admin_confirmed: false }).update({
         face_detected: analysis.face_detected,
         divergence_status: analysis.divergence_status,
         divergence_reason: analysis.divergence_reason,

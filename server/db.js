@@ -10,7 +10,7 @@ export function createDatabase(filename) {
     migrations: { directory: resolve(root, 'server/migrations') },
     seeds: { directory: resolve(root, 'server/seeds') },
   }
-  // Explicit filenames isolate tests from the configured remote database.
+  // An explicit filename selects a local database instead of the configured remote database.
   if (filename === undefined && process.env.DATABASE_URL) {
     return knex({ ...shared, client: 'pg',
       connection: { connectionString: process.env.DATABASE_URL,

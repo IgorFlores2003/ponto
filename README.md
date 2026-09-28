@@ -45,12 +45,11 @@ Após login, o administrador pode:
 
 Funcionários existentes e seus históricos são preservados pelas migrations. Cadastros anteriores ficam com **PIN pendente** até o administrador definir um PIN.
 
-As horas descontam intervalos e dividem expedientes que atravessam a meia-noite. Incluem jornadas abertas até a atualização do relatório. Datas e horários são apresentados em Brasília. Os relatórios mostram horas trabalhadas, sem inferir horas extras ou faltas a partir da meta diária. Use **Atualizar** para buscar novas batidas.
+As horas descontam intervalos e dividem expedientes que atravessam a meia-noite. Incluem jornadas abertas até a atualização do relatório. Datas e horários são apresentados em Brasília. Os relatórios mostram horas trabalhadas, abonadas por atestado e extras em dias sem jornada prevista. Extras na folga não compensam horas devidas de outros dias; o valor das extras na folga usa a tarifa individual cadastrada, sem apuração de extras acima da jornada em dias normais. Use **Atualizar** para buscar novas batidas.
 
 ## Validação e produção
 
 ```bash
-npm test
 npm run build
 npm start
 ```
@@ -118,7 +117,7 @@ Configure `DATABASE_URL` e `DATABASE_CA_PATH` no `.env` (ignorado pelo Git). Nun
 
 A conexão usa TLS com validação de certificado e hostname. A CA pública em `server/certs/supabase.crt` foi obtida em https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt. Consulte a [documentação SSL do Supabase](https://supabase.com/docs/guides/platform/ssl-enforcement) para renovação do certificado.
 
-As migrations ativam RLS nas tabelas do aplicativo e revogam acesso dos papéis públicos `anon` e `authenticated`; somente o backend acessa os dados. Os bloqueios de batidas e de tentativas usam transações, compatíveis com o pooler na porta 6543. O suporte a SQLite permanece para desenvolvimento e testes. Os testes passam caminhos explícitos temporários, sem acessar o banco remoto.
+As migrations ativam RLS nas tabelas do aplicativo e revogam acesso dos papéis públicos `anon` e `authenticated`; somente o backend acessa os dados. Os bloqueios de batidas e de tentativas usam transações, compatíveis com o pooler na porta 6543. O suporte a SQLite permanece para desenvolvimento local.
 
 A troca de configuração não copia funcionários ou batidas já existentes no arquivo SQLite para o Supabase.
 
@@ -185,3 +184,31 @@ As **horas previstas no mês** são automáticas: somam os dias efetivamente pre
 A interface usa Tailwind CSS, integrado ao Vite por `@tailwindcss/vite`. As classes utilitárias ficam nos componentes React; `src/tailwind.css` contém somente a importação do Tailwind. O antigo `src/styles.css` foi removido. Preserve classes completas nas condições para que o compilador detecte os estilos.
 
 Use ícones da biblioteca `react-icons` (Feather em `react-icons/fi` e utensílios em `react-icons/lu`). Não desenhe SVGs ou use símbolos de texto como ícones da interface. Os ícones da navegação inferior têm 18 px e os botões mantêm uma área maior para toque.
+
+
+### Atestado e trabalho na folga
+
+No **Calendário → Horário, folga ou atestado**, escolha **Atestado**, selecione o funcionário e informe as datas inicial e final (inclusive, até 366 dias). O lançamento cobre dias inteiros, inclusive períodos que atravessam meses. As horas previstas dos dias de trabalho são abonadas, sem criar batidas fictícias. Folgas e feriados sem jornada não geram abono. O relatório e o dashboard mostram **Atestado** e **Total cumprido = trabalhadas + atestado**. As horas previstas permanecem na meta e o abono conta para cumpri-la. Se houver batidas em uma data coberta, o crédito do atestado é limitado às horas previstas ainda não trabalhadas, evitando duplicação. Não há upload de documento ou abono parcial por horas nesta versão.
+
+Cada data fica registrada no calendário. A última exceção individual salva prevalece, e remover uma data do atestado restaura a regra anterior daquele dia. Atestados sobrepostos não duplicam o abono. A edição coletiva da escala preserva atestados quando a pessoa continua desmarcada.
+
+Para quem trabalha na folga, mantenha a **Folga** ou lance **Trabalho extra** para indicar a presença planejada sem aumentar as horas devidas. As batidas efetivas, descontados os intervalos, aparecem em **Extras na folga** (também incluídas no total de serviço), inclusive em feriados sem escala. Jornadas abertas e períodos que cruzam meia-noite são divididos por data, no horário de Brasília. Essas extras não compensam faltas de outros dias. Seu valor é calculado pela tarifa final por hora cadastrada para o funcionário, sem aplicar percentuais adicionais. Em dias normais, o sistema mantém o cálculo de saldo de horas existente.
+
+Para **troca de folga**, registre **Trabalho** no novo dia de trabalho e **Folga** no novo descanso. Marcar alguém na lista coletiva também configura trabalho normal, aumentando as horas previstas. As novas colunas estão no relatório e nas exportações CSV, Excel e PDF.
+
+
+### Valor da hora extra por funcionário
+
+Em **Funcionários → Criar funcionário** ou **Editar funcionário**, informe **Valor da hora extra (R$/h)**, por exemplo `25,50`. O campo é opcional; em branco significa **Não cadastrado**, diferente de um valor explicitamente igual a zero. O valor informado deve ser o preço final da hora extra na folga.
+
+O dashboard, relatório e exportações calculam **Total extras = horas na folga × valor/h**, usando os segundos registrados e arredondando o resultado final em centavos. Atestado não gera pagamento de extra. O valor atual vale para qualquer período consultado: alterar a tarifa recalcula relatórios anteriores; não há tabela histórica de tarifas nesta versão.
+
+A migration **014_employee_overtime_rate** adiciona a tarifa individual sem atribuir preços aos funcionários existentes. Execute `npm run db:migrate` no ambiente de destino antes da publicação; o servidor local aplica migrations ao iniciar.
+
+### Notificações de fotos no admin
+
+O sino na barra superior do app administrativo mostra o total de batidas com **possível divergência** ou **sem rosto**, ainda não revisadas. A lista inclui todas as datas e funcionários, inclusive desativados, sem depender do filtro do relatório. Atualiza a cada 10 segundos enquanto o app está visível e ao retornar para ele; são notificações dentro do app, não notificações push do celular.
+
+Toque no alerta para abrir a foto da batida junto à foto cadastrada e validar ou marcar a foto como errada. Abrir a notificação não a resolve: ela sai das pendências somente após revisão e permanece no histórico. A lista é paginada e as fotos são carregadas apenas ao abrir cada caso. Resultados automáticos atrasados não sobrescrevem decisões do administrador.
+
+Os alertas usam os resultados da análise de fotos existente (configurada com `GEMINI_API_KEY`). Batidas ainda em análise não são apresentadas como divergência confirmada. Uma indicação de possível divergência deve ser conferida pelo administrador.

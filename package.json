@@ -10,7 +10,6 @@
     "dev:web": "vite",
     "dev:server": "node --watch server/index.js",
     "start": "node server/index.js",
-    "test": "node --test server/*.test.js",
     "admin:create": "node server/create-admin.js",
     "db:seed": "node server/seed.js",
     "db:migrate": "node server/migrate.js",

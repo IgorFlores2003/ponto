@@ -9,7 +9,7 @@ import SuccessToast from './SuccessToast'
 type Person = { id: number; name: string; work_minutes: number; workdays?: string; active: boolean }
 type Event = ScheduleEvent & { id: number | string; title: string; employee_name?: string | null }
 type Props = { employees: Person[]; request: <T>(path: string, body?: unknown) => Promise<T>; onError: (error: unknown) => void; onChanged: () => void }
-const kinds = ['Folga', 'Trabalho', 'Feriado', 'Emenda']
+const kinds = ['Folga', 'Trabalho', 'Trabalho extra', 'Atestado', 'Feriado', 'Emenda']
 const weekdays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 const isoDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 const formatMinutes = (minutes: number) => `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}`
@@ -20,7 +20,7 @@ export default function WorkCalendar({ employees, request, onError, onChanged }:
   const [selected, setSelected] = useState(() => isoDate(new Date()))
   const [events, setEvents] = useState<Event[]>([])
   const [personId, setPersonId] = useState('')
-  const [form, setForm] = useState({ kind: 'Folga', title: '', repeat: 'once', customHours: false, starts_at: '07:00', ends_at: '11:00', break_time: '00:00' })
+  const [form, setForm] = useState({ kind: 'Folga', end_date: '', title: '', repeat: 'once', customHours: false, starts_at: '07:00', ends_at: '11:00', break_time: '00:00' })
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -65,13 +65,15 @@ export default function WorkCalendar({ employees, request, onError, onChanged }:
     plannedDates.push(isoDate(cursor))
     if (form.repeat === 'once') break
   }
+  const isWork = ['Trabalho', 'Trabalho extra'].includes(form.kind)
   async function addEvent(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setNotice('')
     try {
       const created = await request<Event[]>('/schedule-events', {
         event_date: selected, kind: form.kind, title: form.title.trim() || (form.kind === 'Trabalho' ? 'Escala de trabalho' : form.kind === 'Folga' ? 'Folga prevista' : form.kind),
-        employee_id: personId ? Number(personId) : null, repeat: form.repeat,
-        ...(form.kind === 'Trabalho' && form.customHours ? { starts_at: form.starts_at, ends_at: form.ends_at, break_time: form.break_time } : {})
+        employee_id: personId ? Number(personId) : null, repeat: form.kind === 'Atestado' ? 'once' : form.repeat,
+        ...(form.kind === 'Atestado' ? { end_date: form.end_date || selected } : {}),
+        ...(isWork && form.customHours ? { starts_at: form.starts_at, ends_at: form.ends_at, break_time: form.break_time } : {})
       })
       setEvents(current => [...current, ...created]); setForm(current => ({ ...current, title: '' }))
       setEditing(null); setNotice(`${created.length} ${created.length === 1 ? 'data salva' : 'datas salvas'} na escala.`); onChanged()
@@ -173,6 +175,12 @@ export default function WorkCalendar({ employees, request, onError, onChanged }:
           Para domingos alternados, mantenha domingo nos dias trabalhados, selecione o primeiro domingo de folga e repita a cada 14 dias. As repetições vão até o fim do mês escolhido.
         </p>
         <p className="my-1">
+          Para trabalhar na folga, use Trabalho extra: somente as horas batidas serão contabilizadas como extras. Se mantiver a Folga, as batidas também serão identificadas automaticamente. Para trocar a folga, marque Trabalho na nova data de trabalho e Folga no novo descanso.
+        </p>
+        <p className="my-1">
+          Selecione Atestado para registrar um período por funcionário. A última exceção individual salva prevalece; remover o atestado restaura a regra anterior daquela data.
+        </p>
+        <p className="my-1">
           No feriado, use Trabalho para quem estará na escala. A exceção individual prevalece sobre a da equipe; entre exceções da mesma pessoa, vale a última salva.
         </p>
       </details>
@@ -229,7 +237,7 @@ export default function WorkCalendar({ employees, request, onError, onChanged }:
                     {date.getDate()}
                   </span>
                   <b className="text-[11px] text-[#23573d]">
-                    {personId ? (count ? 'Trabalha' : 'Folga') : `${count} na escala`}
+                    {personId ? (count ? 'Trabalha' : scheduleForDate(people[0] || { id: Number(personId) }, key, events).reason === 'Atestado' ? 'Atestado' : 'Folga') : `${count} na escala`}
                   </b>
                   {todayEvents.map(event => (
                     <small
@@ -273,7 +281,7 @@ export default function WorkCalendar({ employees, request, onError, onChanged }:
                 onClick={() => setEditing('exception')}
               >
                 <FiClock size={15} aria-hidden="true" />
-                Configurar horário ou folga
+                Horário, folga ou atestado
               </button>
             </div>
 
@@ -305,7 +313,7 @@ export default function WorkCalendar({ employees, request, onError, onChanged }:
                     <strong className="text-[#143f31]">{person.name}</strong>
                     <span className="text-[#668174]">
                       {plan.startsAt ? `${plan.startsAt} às ${plan.endsAt} · ` : ''}
-                      {formatMinutes(plan.workMinutes)} de trabalho{plan.startsAt && plan.endsAt && plan.endsAt < plan.startsAt ? ' · saída no dia seguinte' : ''}
+                      {formatMinutes(plan.workMinutes)} de trabalho{plan.reason === 'Trabalho extra' ? ' extra' : ''}{plan.startsAt && plan.endsAt && plan.endsAt < plan.startsAt ? ' · saída no dia seguinte' : ''}
                     </span>
                   </li>
                 ))}
@@ -314,7 +322,7 @@ export default function WorkCalendar({ employees, request, onError, onChanged }:
 
             {off.length > 0 && (
               <div className="mt-3">
-                <h4 className="text-xs font-bold text-[#527566]">De folga</h4>
+                <h4 className="text-xs font-bold text-[#527566]">Sem jornada prevista</h4>
                 <ul className="my-2 list-none divide-y divide-[#dce8e1] p-0">
                   {off.map(({ person, plan }) => (
                     <li key={person.id} className="flex items-center justify-between gap-3 py-2 text-xs">
@@ -358,23 +366,42 @@ export default function WorkCalendar({ employees, request, onError, onChanged }:
                 <fieldset disabled={busy} className="m-0 grid min-w-0 gap-3.5 border-0 p-0">
                   <label className={labelClass}>
                     Tipo
-                    <select value={form.kind} className={inputClass} onChange={event => setForm({ ...form, kind: event.target.value })}>
+                    <select value={form.kind} className={inputClass} onChange={event => setForm({ ...form, kind: event.target.value, end_date: selected })}>
                       {kinds.map(kind => <option key={kind}>{kind}</option>)}
                     </select>
                   </label>
-                  <label className={labelClass}>
+                  {form.kind === 'Atestado' ? (
+                    <>
+                      <label className={labelClass}>
+                        Funcionário do atestado
+                        <select required value={personId} className={inputClass} onChange={event => setPersonId(event.target.value)}>
+                          <option value="">Selecione um funcionário</option>
+                          {employees.filter(person => person.active).map(person => <option key={person.id} value={person.id}>{person.name}</option>)}
+                        </select>
+                      </label>
+                      <label className={labelClass}>
+                        Data inicial
+                        <input required type="date" value={selected} className={inputClass} onChange={event => { if (event.target.value) { setSelected(event.target.value); setMonth(new Date(`${event.target.value.slice(0, 7)}-01T12:00:00`)) } }} />
+                      </label>
+                      <label className={labelClass}>
+                        Data final (inclusive)
+                        <input required type="date" min={selected} value={form.end_date || selected} className={inputClass} onChange={event => setForm({ ...form, end_date: event.target.value })} />
+                      </label>
+                      <p className="text-xs text-[#668174]">Abona os dias inteiros de trabalho cobertos pelo período. Registre apenas uma descrição administrativa, sem diagnóstico. Não inclui anexo do documento.</p>
+                    </>
+                  ) : <label className={labelClass}>
                     Repetir
                     <select value={form.repeat} className={inputClass} onChange={event => setForm({ ...form, repeat: event.target.value })}>
                       <option value="once">Somente nesta data</option>
                       <option value="weekly">Toda semana até o fim do mês</option>
                       <option value="fortnightly">A cada 14 dias até o fim do mês</option>
                     </select>
-                  </label>
+                  </label>}
                   <label className={labelClass}>
                     Descrição (opcional)
                     <input maxLength={120} placeholder="Ex.: Folga de domingo, escala do feriado" value={form.title} className={inputClass} onChange={event => setForm({ ...form, title: event.target.value })} />
                   </label>
-                  {form.kind === 'Trabalho' && (
+                  {isWork && (
                     <>
                       <label className="flex items-center gap-2 text-xs font-semibold text-[#527566]">
                         <input type="checkbox" className="size-4 rounded accent-[#317455]" checked={form.customHours} onChange={event => setForm({ ...form, customHours: event.target.checked })} />
@@ -401,7 +428,7 @@ export default function WorkCalendar({ employees, request, onError, onChanged }:
                     </>
                   )}
                   <p className="text-xs text-[#668174]">
-                    {plannedDates.length} {plannedDates.length === 1 ? 'data' : 'datas'}: {plannedDates.map(date => date.slice(8) + '/' + date.slice(5, 7)).join(', ')}. {form.kind === 'Trabalho' ? 'Essas horas entram como previstas no relatório.' : 'As folgas efetivas não geram horas devidas; exceções individuais continuam tendo prioridade.'}
+                    {form.kind === 'Atestado' ? `Atestado de ${selected.split('-').reverse().join('/')} até ${(form.end_date || selected).split('-').reverse().join('/')}. As horas abonadas contam no total cumprido e não geram horas devidas.` : <>{plannedDates.length} {plannedDates.length === 1 ? 'data' : 'datas'}: {plannedDates.map(date => date.slice(8) + '/' + date.slice(5, 7)).join(', ')}. {form.kind === 'Trabalho' ? 'Essas horas entram como previstas no relatório.' : form.kind === 'Trabalho extra' ? 'As batidas deste dia entram como extras na folga, sem aumentar as horas previstas.' : 'As folgas efetivas não geram horas devidas; exceções individuais continuam tendo prioridade.'}</>}
                   </p>
                   <button
                     type="submit"

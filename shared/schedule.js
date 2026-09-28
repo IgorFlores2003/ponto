@@ -15,8 +15,16 @@ export function scheduleForDate(employee, date, events = []) {
   const holiday = brazilNationalHolidays(Number(date.slice(0, 4))).has(date)
   const working = exception ? ['Trabalho', 'Trabalho extra'].includes(exception.kind) : days.includes(weekday) && !holiday
   const workMinutes = working ? Number(exception?.work_minutes ?? employee.work_minutes ?? (employee.target_hours || 8) * 60) : 0
+  const medical = exception?.kind === 'Atestado'
+  const extra = exception?.kind === 'Trabalho extra'
+  const excusedMinutes = medical
+    ? scheduleForDate(employee, date, events.filter(event => event.kind !== 'Atestado')).expectedMinutes
+    : 0
   return {
     workMinutes,
+    expectedMinutes: medical ? excusedMinutes : extra ? 0 : workMinutes,
+    excusedMinutes,
+    offDay: !medical && (extra || workMinutes === 0),
     breakMinutes: working ? Number(exception?.break_minutes ?? employee.break_minutes ?? 60) : 0,
     startsAt: working ? exception?.starts_at ?? null : null,
     endsAt: working ? exception?.ends_at ?? null : null,
@@ -29,7 +37,7 @@ export function monthlyScheduleMinutes(employee, month, events = []) {
   const days = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate()
   let total = 0
   for (let day = 1; day <= days; day++) {
-    total += scheduleForDate(employee, `${month}-${String(day).padStart(2, '0')}`, events).workMinutes
+    total += scheduleForDate(employee, `${month}-${String(day).padStart(2, '0')}`, events).expectedMinutes
   }
   return total
 }

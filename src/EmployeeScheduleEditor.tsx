@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { FiCheck, FiEdit2 } from 'react-icons/fi'
-import { api, hours, day, type Employee } from './types'
+import { api, hours, day, money, type Employee } from './types'
+import { parseHourlyRate } from '../shared/money.js'
 import { monthlyScheduleMinutes, type ScheduleEvent } from '../shared/schedule.js'
 
 const WEEKDAYS: [string, number][] = [
@@ -24,6 +25,7 @@ export default function EmployeeScheduleEditor({ employee, token, monthEvents, o
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState({
+    overtime_rate: employee.overtime_rate_cents == null ? '' : (employee.overtime_rate_cents / 100).toFixed(2).replace('.', ','),
     department: employee.department || '',
     job_title: employee.job_title || '',
     work_time: hours(employee.work_minutes || employee.target_hours * 60),
@@ -32,7 +34,7 @@ export default function EmployeeScheduleEditor({ employee, token, monthEvents, o
   })
 
   const inputClass = 'min-w-0 w-full rounded-lg border border-[#cbded2] bg-white p-2 text-xs text-[#315847] focus-visible:outline-2 focus-visible:outline-[#31835b]'
-  const labelClass = 'grid gap-1 text-[11px] font-bold text-[#527566]'
+  const labelClass = 'grid min-w-0 gap-1 text-[11px] font-bold text-[#527566]'
 
   const toMinutes = (value: string) => {
     const [h, m] = value.split(':').map(Number)
@@ -45,6 +47,7 @@ export default function EmployeeScheduleEditor({ employee, token, monthEvents, o
     try {
       const updated: Employee = {
         ...employee,
+        overtime_rate_cents: parseHourlyRate(form.overtime_rate) ?? null,
         department: form.department,
         job_title: form.job_title,
         work_minutes: toMinutes(form.work_time),
@@ -68,7 +71,7 @@ export default function EmployeeScheduleEditor({ employee, token, monthEvents, o
 
   if (editing) {
     return (
-      <form className="my-2 grid grid-cols-2 gap-2 rounded-xl border border-[#dce8e1] bg-white p-3" onSubmit={save}>
+      <form className="my-2 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 rounded-xl border border-[#dce8e1] bg-white p-3" onSubmit={save}>
         <label className={labelClass}>
           Função
           <input maxLength={120} value={form.job_title} className={inputClass}
@@ -79,7 +82,7 @@ export default function EmployeeScheduleEditor({ employee, token, monthEvents, o
           <input required type="time" value={form.work_time} className={inputClass}
             onChange={e => setForm({ ...form, work_time: e.target.value })} />
         </label>
-        <fieldset className="col-span-full flex flex-wrap gap-x-2.5 gap-y-1.5 rounded-lg border border-[#dce8e1] p-2">
+        <fieldset className="col-span-full flex min-w-0 flex-wrap gap-x-2.5 gap-y-1.5 rounded-lg border border-[#dce8e1] p-2">
           <legend className="px-1 text-[10px] font-bold text-[#527566]">Dias trabalhados</legend>
           {WEEKDAYS.map(([label, value]) => (
             <label key={value} className="flex cursor-pointer items-center gap-1 text-[11px] text-[#315847]">
@@ -100,6 +103,12 @@ export default function EmployeeScheduleEditor({ employee, token, monthEvents, o
           <input required type="time" value={form.break_time} className={inputClass}
             onChange={e => setForm({ ...form, break_time: e.target.value })} />
         </label>
+        <label className={labelClass}>
+          Valor da hora extra (R$/h)
+          <input inputMode="decimal" pattern="[0-9]{1,6}([.,][0-9]{1,2})?" placeholder="Ex.: 25,50" value={form.overtime_rate} className={inputClass}
+            onChange={e => setForm({ ...form, overtime_rate: e.target.value })} />
+        </label>
+        <p className="col-span-full text-xs text-[#668174]">Informe o valor final de uma hora extra na folga. O relatório multiplica as horas por esse valor, sem acrescentar percentuais. Alterar o valor recalcula também os relatórios de períodos anteriores.</p>
         <div className="col-span-full flex items-center justify-end gap-2 pt-1">
           <button type="button" disabled={busy}
             className="bg-transparent px-2 py-1 text-xs font-bold text-[#527566] hover:text-[#173d2f] disabled:opacity-55"
@@ -120,12 +129,13 @@ export default function EmployeeScheduleEditor({ employee, token, monthEvents, o
     .join(', ') || 'Por escala'
 
   return (
-    <p className="mt-1 text-xs text-[#527566]">
-      {employee.job_title || 'Função não informada'} · {hours(employee.work_minutes || employee.target_hours * 60)}/dia · {workdayNames} · {hours(employee.monthly_minutes ?? 0)} previstas em {employee.monthly_month?.split('-').reverse().join('/') || 'este mês'} · {hours(employee.break_minutes ?? 60)} de intervalo{' '}
+    <p className="mt-1 min-w-0 [overflow-wrap:anywhere] text-xs leading-relaxed text-[#527566]">
+      {employee.job_title || 'Função não informada'} · {hours(employee.work_minutes || employee.target_hours * 60)}/dia · {workdayNames} · {hours(employee.monthly_minutes ?? 0)} previstas em {employee.monthly_month?.split('-').reverse().join('/') || 'este mês'} · {hours(employee.break_minutes ?? 60)} de intervalo · Hora extra: {money(employee.overtime_rate_cents)}{' '}
       <button
         className="inline-flex items-center gap-0.5 bg-transparent font-bold text-[#317455] hover:text-[#173d2f]"
         onClick={() => {
           setForm({
+            overtime_rate: employee.overtime_rate_cents == null ? '' : (employee.overtime_rate_cents / 100).toFixed(2).replace('.', ','),
             department: employee.department || '',
             job_title: employee.job_title || '',
             work_time: hours(employee.work_minutes),

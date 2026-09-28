@@ -8,6 +8,8 @@ dist/
 build/
 *.tsbuildinfo
 .vite/
+/vite.config.js
+/vite.config.d.ts
 .turbo/
 .rollup.cache/
 

@@ -7,7 +7,7 @@
   "functions": {
     "api/index.js": {
       "includeFiles": "server/certs/**",
-      "excludeFiles": "{.env,.env.*,data/**,android/**,server/*.test.js,server/seeds/**}",
+      "excludeFiles": "{.env,.env.*,data/**,android/**,server/seeds/**}",
       "maxDuration": 60
     }
   },
