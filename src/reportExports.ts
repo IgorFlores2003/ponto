@@ -1,4 +1,4 @@
-import { hours, money, type Report } from './types'
+import { formatDate, hours, money, type Report } from './types'
 
 /**
  * Gera um arquivo CSV a partir dos dados do relatório.
@@ -13,7 +13,7 @@ export function buildCsv(report: Report, selected: string): Blob {
       .filter(row => !selected || String(row.id) === selected)
       .map(row => [
         row.name, row.registration, row.department, row.job_title,
-        report.from, report.to,
+        formatDate(report.from), formatDate(report.to),
         hours(Math.floor(row.expected_seconds / 60)),
         hours(row.minutes),
         hours(Math.floor(row.excused_seconds / 60)),
@@ -43,7 +43,7 @@ export function buildExcel(report: Report, selected: string): Blob {
       .filter(row => !selected || String(row.id) === selected)
       .map(row => [
         row.name, row.registration, row.department, row.job_title,
-        `${report.from} a ${report.to}`,
+        `${formatDate(report.from)} a ${formatDate(report.to)}`,
         hours(Math.floor(row.expected_seconds / 60)),
         hours(row.minutes),
         hours(Math.floor(row.excused_seconds / 60)),
@@ -75,7 +75,7 @@ export async function buildPdf(report: Report, selected: string): Promise<Blob> 
   const filtered = report.rows.filter(row => !selected || String(row.id) === selected)
 
   pdf.setFontSize(18); pdf.text('Relatório de horas', 14, 16)
-  pdf.setFontSize(10); pdf.text(`Período: ${report.from} a ${report.to}`, 14, 23)
+  pdf.setFontSize(10); pdf.text(`Período: ${formatDate(report.from)} a ${formatDate(report.to)}`, 14, 23)
 
   const headers = ['Funcionário', 'Função', 'Previstas', 'Trabalhadas', 'Devidas', 'Intervalo', 'Int. a mais', 'Atestado', 'Extra folga']
   const x = [14, 62, 109, 134, 162, 186, 211, 236, 260]

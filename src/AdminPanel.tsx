@@ -1,3 +1,5 @@
+import DateInput from './DateInput'
+import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { FiSmartphone, FiLogOut, FiRefreshCw } from 'react-icons/fi'
 import EntryNotifications from './EntryNotifications'
@@ -17,10 +19,11 @@ type Tab = 'dashboard' | 'calendario' | 'funcionarios' | 'relatorios'
 interface Props {
   token: string
   onExit: () => void
+  notificationTarget: HTMLDivElement | null
 }
 
 /** Painel administrativo completo: busca dados, gerencia abas e delega a subcomponentes. */
-export default function AdminPanel({ token, onExit }: Props) {
+export default function AdminPanel({ token, onExit, notificationTarget }: Props) {
   const [tab, setTab] = useState<Tab>('dashboard')
   const [employees, setEmployees] = useState<Employee[]>([])
   const [monthEvents, setMonthEvents] = useState<ScheduleEvent[]>([])
@@ -156,6 +159,10 @@ export default function AdminPanel({ token, onExit }: Props) {
   return (
     <>
       {downloadNotice && <DownloadToast notice={downloadNotice} onClose={() => setDownloadNotice(null)} />}
+      {notificationTarget && createPortal(
+        <EntryNotifications token={token} version={version} onUnauthorized={onExit} onEntryUpdated={entryUpdated} />,
+        notificationTarget,
+      )}
 
       {/* Barra superior */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -163,7 +170,6 @@ export default function AdminPanel({ token, onExit }: Props) {
           <FiSmartphone size={16} aria-hidden="true" /> Terminal de ponto
         </a>
         <div className="flex items-center gap-3">
-          <EntryNotifications token={token} version={version} onUnauthorized={onExit} onEntryUpdated={entryUpdated} />
           <button type="button" disabled={busy}
             className="flex items-center gap-1 bg-transparent text-xs font-bold text-[#317455] hover:text-[#173d2f] disabled:opacity-55"
             onClick={logout}>
@@ -227,11 +233,11 @@ export default function AdminPanel({ token, onExit }: Props) {
             <div className="my-5 grid grid-cols-2 gap-3">
               <label className={LABEL_CLASS}>
                 De
-                <input type="date" value={from} className={INPUT_CLASS} onChange={e => setFrom(e.target.value)} />
+                <DateInput value={from} className={INPUT_CLASS} onChange={value => setFrom(value)} />
               </label>
               <label className={LABEL_CLASS}>
                 Até
-                <input type="date" value={to} className={INPUT_CLASS} onChange={e => setTo(e.target.value)} />
+                <DateInput value={to} className={INPUT_CLASS} onChange={value => setTo(value)} />
               </label>
             </div>
           )}

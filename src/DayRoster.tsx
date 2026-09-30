@@ -19,13 +19,13 @@ export default function DayRoster({ date, employees, events, busy, onSave }: Pro
     >
       <div className="flex items-center gap-2">
         <FiUsers size={18} className="text-[#234c37]" aria-hidden="true" />
-        <h4 className="text-lg font-bold text-[#234c37]">Quem trabalha neste dia?</h4>
+        <h4 className="text-lg font-bold text-[#234c37]">Marque quem vai trabalhar</h4>
       </div>
-      <p className="mt-2 mb-3.5 text-[13px] leading-normal text-[#527566]">
-        Marque quem vai trabalhar. Quem ficar desmarcado estará de folga somente nesta data. A seleção inclui toda a equipe. Para trabalhar na folga como extra, use “Horário, folga ou atestado” e escolha Trabalho extra.
+      <p className="mt-2 mb-3.5 text-base leading-normal text-[#527566]">
+        Marque quem vai trabalhar. Quem ficar desmarcado estará de folga somente nesta data. A seleção inclui toda a equipe. Para registrar hora extra, volte ao calendário e use “Registrar folga, atestado ou horário”.
       </p>
       <fieldset disabled={busy} className="m-0 grid gap-2 border-0 p-0">
-        <legend className="mb-2.5 text-xs font-semibold text-[#527566]">
+        <legend className="mb-2.5 text-base font-semibold text-[#527566]">
           Equipe de {date.split('-').reverse().join('/')}
         </legend>
         {active.map(person => {
@@ -33,7 +33,7 @@ export default function DayRoster({ date, employees, events, busy, onSave }: Pro
           return (
             <label
               key={person.id}
-              className={`flex min-h-12 cursor-pointer items-center gap-2.5 rounded-[10px] border p-3 text-sm transition ${
+              className={`flex min-h-12 cursor-pointer items-center gap-2.5 rounded-[10px] border p-3 text-base transition ${
                 isWorking ? 'border-[#8bbb9b] bg-[#eaf5ee] text-[#1e4d35]' : 'border-[#dce8e1] bg-white text-[#527566]'
               }`}
             >
@@ -49,7 +49,7 @@ export default function DayRoster({ date, employees, events, busy, onSave }: Pro
                 })}
               />
               <span className="flex-1 break-words font-medium">{person.name}</span>
-              <strong className={`text-xs ${isWorking ? 'text-[#246841]' : 'text-[#789185]'}`}>
+              <strong className={`text-base ${isWorking ? 'text-[#246841]' : 'text-[#527566]'}`}>
                 {isWorking ? (scheduleForDate(person, date, events).reason === 'Trabalho extra' ? 'Trabalho extra' : 'Trabalha') : scheduleForDate(person, date, events).reason === 'Atestado' ? 'Atestado' : 'Folga'}
               </strong>
             </label>

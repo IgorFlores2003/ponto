@@ -7,7 +7,7 @@ export function Avatar({ name, photo }: { name: string; photo?: string | null })
   }
   const initials = name.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase() || '?'
   if (initials === 'PD' || name.trim().toUpperCase() === 'PD' || name.trim().toUpperCase() === 'PONTO DIGITAL') {
-    return <img className="size-[52px] shrink-0 rounded-full border-2 border-[#dce8e1] object-cover" src="/icon-admin.png" alt={`Foto de ${name}`} />
+    return <img className="size-[52px] shrink-0 rounded-full border-2 border-[#dce8e1] object-cover" src="/icon-admin.png?v=3" alt={`Foto de ${name}`} />
   }
   return (
     <span className="inline-grid size-[52px] shrink-0 place-items-center rounded-full border-2 border-[#dce8e1] bg-[#e2f3e8] text-lg font-bold text-[#246841]" aria-hidden="true">
@@ -42,7 +42,7 @@ export default function EmployeePhoto({ name, photo, onChange, disabled = false,
     <div className="my-3 flex flex-wrap items-center gap-3">
       <Avatar name={name} photo={photo} />
       <div className="flex flex-col gap-1.5">
-        <label className="flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-[#315847] hover:text-[#173d2f]">
+        <label className="flex min-h-12 cursor-pointer items-center gap-2 rounded-lg border border-[#9fbaa9] px-3 text-base focus-within:outline-2 focus-within:outline-[#246841] font-semibold text-[#315847] hover:text-[#173d2f]">
           <FiCamera size={15} aria-hidden="true" />
           <span>{busy ? 'Salvando foto…' : photo ? 'Trocar foto' : 'Escolher foto'}</span>
           <input
@@ -56,7 +56,7 @@ export default function EmployeePhoto({ name, photo, onChange, disabled = false,
         {photo && (
           <button
             type="button"
-            className="flex items-center gap-1 bg-transparent text-[11px] font-bold text-[#a24636] transition hover:text-[#7f2d20] disabled:opacity-55"
+            className="flex min-h-12 items-center gap-2 bg-transparent text-sm font-bold text-[#a24636] transition hover:text-[#7f2d20] disabled:opacity-55"
             disabled={disabled || busy}
             onClick={async () => {
               setBusy(true)

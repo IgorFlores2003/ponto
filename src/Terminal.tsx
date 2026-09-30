@@ -14,7 +14,7 @@ type Receipt = {
 }
 
 /** Terminal de ponto: campo de PIN + tipo de batida + comprovante. */
-export default function Terminal() {
+export default function Terminal({ token, onSessionExpired }: { token: string; onSessionExpired: () => void }) {
   const [pin, setPin] = useState('')
   const [kind, setKind] = useState('Entrada')
   const [intervalType, setIntervalType] = useState<'lunch' | 'coffee'>('lunch')
@@ -74,13 +74,14 @@ export default function Terminal() {
           request_id: pending.current,
           photo,
           client_face_detected: faceDetected,
-        }),
+        }, token),
       )
       pending.current = null
       setKind('Entrada')
       setIntervalType('lunch')
     } catch (err) {
       setError(errorMessage(err))
+      if (err instanceof ApiError && err.code === 'TERMINAL_SESSION_EXPIRED') onSessionExpired()
       if (err instanceof ApiError) pending.current = null
     } finally {
       setPin('')

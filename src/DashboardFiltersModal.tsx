@@ -1,3 +1,4 @@
+import DateInput from './DateInput'
 import { useState } from 'react'
 import { FiFilter, FiRotateCcw } from 'react-icons/fi'
 import FormModal from './FormModal'
@@ -20,11 +21,11 @@ export default function DashboardFiltersModal({ filters, rows, onApply, onClose 
       >
         <label className={labelClass}>
           De
-          <input required type="date" max={draft.to} value={draft.from} className={inputClass} onChange={event => setDraft({ ...draft, from: event.target.value })} />
+          <DateInput required max={draft.to} value={draft.from} className={inputClass} onChange={value => setDraft({ ...draft, from: value })} />
         </label>
         <label className={labelClass}>
           Até
-          <input required type="date" min={draft.from} max={draft.from ? new Date(Date.parse(`${draft.from}T12:00:00Z`) + 366 * 86400000).toISOString().slice(0, 10) : undefined} value={draft.to} className={inputClass} onChange={event => setDraft({ ...draft, to: event.target.value })} />
+          <DateInput required min={draft.from} max={draft.from ? new Date(Date.parse(`${draft.from}T12:00:00Z`) + 366 * 86400000).toISOString().slice(0, 10) : undefined} value={draft.to} className={inputClass} onChange={value => setDraft({ ...draft, to: value })} />
         </label>
         <label className={labelClass}>
           Nome, função ou matrícula

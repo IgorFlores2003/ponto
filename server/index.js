@@ -4,9 +4,11 @@ import compression from 'compression'
 import { fileURLToPath } from 'node:url'
 import { createDatabase } from './db.js'
 import { createApp } from './app.js'
+import { supabaseConfig } from './supabase.js'
+const config = supabaseConfig()
 const db = createDatabase()
 await db.migrate.latest()
-const app = createApp(db)
+const app = createApp(db, { config })
 
 // Security headers: CSP, HSTS, X-Frame-Options, X-Content-Type-Options, etc.
 app.use(helmet({
@@ -16,7 +18,7 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-      imgSrc: ["'self'", 'data:', 'blob:'],
+      imgSrc: ["'self'", 'data:', 'blob:', ...(config.photoProvider === 'supabase' ? [config.url] : [])],
       connectSrc: ["'self'"],
       frameSrc: ["'none'"],
       objectSrc: ["'none'"],

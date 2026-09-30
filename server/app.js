@@ -1,22 +1,30 @@
 import express from 'express'
 import { validPhoto } from './photos.js'
+import { createPhotoStorage } from './photo-storage.js'
+import { createSessionAuth } from './session-auth.js'
+import { supabaseConfig, SupabaseError } from './supabase.js'
 import { analyzePunchPhoto } from './gemini.js'
 import { parseHourlyRate } from '../shared/money.js'
 import { parseDuration } from './durations.js'
 import { matchingBreak, validRule, localDateTime } from './breaks.js'
 import { randomBytes } from 'node:crypto'
-import { hashPassword, verifyPassword, hashToken, pinDigest, rateLimit } from './auth.js'
+import { pinDigest, rateLimit } from './auth.js'
 import { reportFor, validDate } from './reports.js'
 import { applyCors } from './cors.js'
+import { saveMonthlyRoster, validateMonthlyRoster } from './monthly-roster.js'
 import { planScheduleEvents } from './schedule-events.js'
 import { scheduleForDate, monthlyScheduleMinutes } from '../shared/schedule.js'
 function validWorkdays(days) { return Array.isArray(days) && days.every(day => Number.isInteger(day) && day >= 0 && day <= 6) && new Set(days).size === days.length }
 export const transitions = { 'Entrada': ['Saída do almoço', 'Saída', 'Início do intervalo'], 'Saída do almoço': ['Entrada do almoço'], 'Entrada do almoço': ['Saída', 'Início do intervalo'], 'Início do intervalo': ['Fim do intervalo'], 'Fim do intervalo': ['Saída', 'Início do intervalo'], 'Saída': ['Entrada'] }
 const columns = ['id', 'name', 'registration', 'department', 'job_title', 'photo', 'target_hours', 'work_minutes', 'break_minutes', 'workdays', 'overtime_rate_cents', 'created_at']
 const publicEmployee = employee => ({ ...Object.fromEntries(columns.map(key => [key, employee[key]])), active: !!employee.active, has_pin: !!employee.pin_digest })
-export function createApp(db, { clock = () => new Date(), analyzer = analyzePunchPhoto } = {}) {
+export function createApp(db, { clock = () => new Date(), analyzer = analyzePunchPhoto, config = supabaseConfig(), fetcher } = {}) {
   const app = express()
-  const dummyHash = hashPassword(randomBytes(24).toString('hex'))
+  if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1)
+  const auth = createSessionAuth(db, config, fetcher)
+  const terminalAuth = createSessionAuth(db, config, fetcher, 'terminal')
+  const photos = createPhotoStorage(config, fetcher)
+  const publicEntry = async entry => (await photos.expose([entry]))[0]
   app.use((req, res, next) => {
     const allowed = applyCors(req, res)
     res.setHeader('Cache-Control', 'no-store')
@@ -24,18 +32,23 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     next()
   })
   app.use(express.json({ limit: '400kb' }))
+  app.get('/api/auth/config', (req, res) => res.json({ provider: 'local' }))
   app.post('/api/auth/login', rateLimit(db, 'login', 10, 15 * 60000), async (req, res) => {
-    const { username, password } = req.body || {}
-    if (typeof username !== 'string' || typeof password !== 'string' || password.length > 1024) return res.status(400).json({ error: 'Informe usuário e senha.' })
-    const admin = await db('admins').where({ username: username.trim().toLowerCase() }).first()
-    const valid = await verifyPassword(password, admin?.password_hash || await dummyHash)
-    if (!admin || !valid) return res.status(401).json({ error: 'Usuário ou senha inválidos.' })
-    const token = randomBytes(32).toString('hex')
-    const expires_at = Date.now() + 8 * 3600000
-    await db('sessions').where('expires_at', '<=', Date.now()).delete()
-    await db('sessions').insert({ token_hash: hashToken(token), admin_id: admin.id, expires_at })
-    res.json({ token, expires_at, username: admin.username })
+    res.json(await auth.login(req.body?.username, req.body?.password))
   })
+  app.get('/api/terminal/config', (req, res) => res.json({ provider: config.terminalAuthProvider }))
+  app.post('/api/terminal/login', rateLimit(db, 'terminal-login', 10, 15 * 60000), async (req, res) => {
+    res.json(await terminalAuth.login(req.body?.username, req.body?.password))
+  })
+  app.use('/api/terminal', async (req, res, next) => {
+    const token = req.headers.authorization?.match(/^Bearer ([a-f0-9]{64})$/)?.[1]
+    const session = token && await terminalAuth.authenticate(token)
+    if (!session) return res.status(401).json({ error: 'Entre para liberar o terminal de ponto.', code: 'TERMINAL_SESSION_EXPIRED' })
+    res.locals.terminalSession = session
+    next()
+  })
+  app.get('/api/terminal/me', (req, res) => res.json({ expires_at: Number(res.locals.terminalSession.expires_at) }))
+  app.post('/api/terminal/logout', async (req, res) => { await terminalAuth.logout(res.locals.terminalSession); res.sendStatus(204) })
   app.post('/api/terminal/punch', rateLimit(db, 'pin', 30, 60000), async (req, res) => {
     const { pin, kind = 'auto', interval_type, request_id, photo = null, client_face_detected = null } = req.body || {}
     if (typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'Informe um PIN de 4 números.' })
@@ -59,7 +72,9 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
         divergence_status = 'ok'
       }
     }
-    const result = await db.transaction(async trx => {
+    let storedPhoto
+    let result
+    try { result = await db.transaction(async trx => {
       const query = trx('employees').where({ id: employee.id })
       if (trx.client.config.client === 'pg') query.forUpdate()
       const current = await query.first()
@@ -83,12 +98,13 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
       if (!(last ? transitions[last.kind] || [] : ['Entrada']).includes(next)) return null
       // Evita que dois envios simultâneos gerem entrada e saída acidentais.
       if (last && now.getTime() - Date.parse(last.occurred_at) < 5000) return null
+      storedPhoto = await photos.put(punch_photo, `entries/${employee.id}`)
       const [{ id }] = await trx('entries').insert({
         employee_id: employee.id,
         kind: next,
         occurred_at: now.toISOString(),
         request_id,
-        punch_photo,
+        punch_photo: storedPhoto,
         face_detected,
         divergence_status,
         divergence_reason,
@@ -96,17 +112,17 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
         ...breakInfo,
       }).returning('id')
       return trx('entries').where({ id }).first()
-    })
+    }) } catch (error) { await photos.discard(storedPhoto); throw error }
     if (result?.inactive) return res.status(403).json({ error: 'Funcionário desativado. Procure o administrador.' })
     if (!result) return res.status(409).json({ error: 'Batida incompatível com a jornada ou registrada há poucos segundos. Confira o tipo e aguarde 5 segundos.' })
 
     // Se houver foto e chave Gemini, roda análise assíncrona sem travar a resposta para o funcionário
-    if (punch_photo && process.env.GEMINI_API_KEY && result.id && result.divergence_status === 'pending') {
+    if (result.punch_photo && process.env.GEMINI_API_KEY && result.id && result.divergence_status === 'pending') {
       void (async () => {
         try {
           const analysis = await analyzer({
-            punchPhoto: punch_photo,
-            employeePhoto: employee.photo,
+            punchPhoto: await photos.dataUrl(result.punch_photo),
+            employeePhoto: await photos.dataUrl(employee.photo),
           })
           if (analysis) {
             await db('entries').where({ id: result.id, admin_confirmed: false }).update({
@@ -133,20 +149,20 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
   // Todas as demais rotas da API são exclusivas do administrador.
   app.use('/api', async (req, res, next) => {
     const token = req.headers.authorization?.match(/^Bearer ([a-f0-9]{64})$/)?.[1]
-    const session = token && await db('sessions').where({ token_hash: hashToken(token) }).where('expires_at', '>', Date.now()).first()
+    const session = token && await auth.authenticate(token)
     if (!session) return res.status(401).json({ error: 'Entre como administrador para continuar.' })
     res.locals.session = session
     next()
   })
   app.get('/api/auth/me', async (req, res) => { const admin = await db('admins').where({ id: res.locals.session.admin_id }).first(); res.json({ username: admin.username }) })
-  app.post('/api/auth/logout', async (req, res) => { await db('sessions').where({ token_hash: res.locals.session.token_hash }).delete(); res.sendStatus(204) })
+  app.post('/api/auth/logout', async (req, res) => { await auth.logout(res.locals.session); res.sendStatus(204) })
   app.get('/api/employees', async (req, res) => {
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(clock())
     const month = req.query.month ?? today.slice(0, 7)
     if (typeof month !== 'string' || !validDate(`${month}-01`)) return res.status(400).json({ error: 'Informe um mês válido (AAAA-MM).' })
     const events = await db('schedule_events').select('*', db.raw('CAST(event_date AS TEXT) AS event_date')).whereBetween('event_date', [`${month}-01`, `${month}-${new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)), 0)).getUTCDate()}`])
     const employees = (await db('employees').orderBy('name')).map(publicEmployee)
-    res.json(employees.map(employee => ({ ...employee, monthly_month: month, monthly_minutes: monthlyScheduleMinutes(employee, month, events) })))
+    res.json(await photos.expose(employees.map(employee => ({ ...employee, monthly_month: month, monthly_minutes: monthlyScheduleMinutes(employee, month, events) }))))
   })
   app.post('/api/employees', async (req, res) => {
     const { name, registration, department = '', job_title = '', photo = null, work_time, break_time, pin, overtime_rate = '' } = req.body || {}
@@ -156,11 +172,19 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     const workdays = req.body?.workdays ?? [1, 2, 3, 4, 5]
     const break_minutes = parseDuration(break_time ?? '01:00')
     if (!validPhoto(photo) || typeof name !== 'string' || !name.trim() || name.trim().length > 120 || (registration !== undefined && (typeof registration !== 'string' || registration.trim().length > 40)) || typeof job_title !== 'string' || job_title.trim().length > 120 || typeof department !== 'string' || department.trim().length > 120 || (work_minutes === null || work_minutes < 1 || work_minutes > 1440) || (break_minutes === null || break_minutes < 0 || break_minutes > 720) || !validWorkdays(workdays) || typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'Informe nome, função, serviço (HH:MM), intervalo (HH:MM) e PIN de 4 números.' })
+    let storedPhoto, id
     try {
+      storedPhoto = await photos.put(photo, `employees/${randomBytes(16).toString('hex')}`)
       const generatedRegistration = registration?.trim() || `FUNC-${Date.now()}-${randomBytes(3).toString('hex')}`
-      const [{ id }] = await db('employees').insert({ name: name.trim(), registration: generatedRegistration, department: department.trim(), job_title: job_title.trim(), photo: photo || null, target_hours: work_minutes / 60, work_minutes, break_minutes, workdays: JSON.stringify(workdays), overtime_rate_cents, pin_digest: await pinDigest(db, pin), created_at: new Date().toISOString() }).returning('id')
-      res.status(201).json(publicEmployee(await db('employees').where({ id }).first()))
-    } catch (error) { if (['SQLITE_CONSTRAINT_UNIQUE', '23505'].includes(error.code)) return res.status(409).json({ error: 'Matrícula ou PIN já utilizado por outro funcionário.' }); throw error }
+      const created = await db('employees').insert({ name: name.trim(), registration: generatedRegistration, department: department.trim(), job_title: job_title.trim(), photo: storedPhoto, target_hours: work_minutes / 60, work_minutes, break_minutes, workdays: JSON.stringify(workdays), overtime_rate_cents, pin_digest: await pinDigest(db, pin), created_at: new Date().toISOString() }).returning('id')
+      id = created[0].id
+    } catch (error) {
+      await photos.discard(storedPhoto)
+      if (['SQLITE_CONSTRAINT_UNIQUE', '23505'].includes(error.code)) return res.status(409).json({ error: 'Matrícula ou PIN já utilizado por outro funcionário.' })
+      throw error
+    }
+    // Return the submitted photo; a subsequent listing gets its signed URL.
+    res.status(201).json({ ...publicEmployee(await db('employees').where({ id }).first()), photo })
   })
   app.get('/api/break-rules', async (req, res) => res.json(await db('break_rules').where({ active: true }).orderBy('starts_at')))
   app.post('/api/break-rules', async (req, res) => {
@@ -227,6 +251,15 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     })
     res.status(201).json(req.body?.repeat || req.body?.kind === 'Atestado' ? created : created[0])
   })
+  app.post('/api/schedule-month', async (req, res) => {
+    try { validateMonthlyRoster(req.body || {}) }
+    catch (error) { return res.status(400).json({ error: error.message }) }
+    try { res.status(201).json(await saveMonthlyRoster(db, req.body, eventColumns)) }
+    catch (error) {
+      if (error.message.startsWith('A equipe mudou.')) return res.status(409).json({ error: error.message })
+      throw error
+    }
+  })
   app.post('/api/schedule-day', async (req, res) => {
     const { event_date, assignments } = req.body || {}
     if (!validDate(event_date) || !Array.isArray(assignments) || assignments.length > 1000 ||
@@ -269,7 +302,7 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
       .where('occurred_at', '<=', windowEnd)
       .orderBy('id')
     const events = await db('schedule_events').select('id', db.raw('CAST(event_date AS TEXT) AS event_date'), 'kind', 'employee_id', 'starts_at', 'ends_at', 'work_minutes', 'break_minutes')
-    res.json({ from, to, generated_at: new Date().toISOString(), rows: reportFor(employees, entries, from, to, Date.now(), events) })
+    res.json({ from, to, generated_at: new Date().toISOString(), rows: await photos.expose(reportFor(employees, entries, from, to, Date.now(), events)) })
   })
   app.use('/api/employees/:id', async (req, res, next) => {
     const id = Number(req.params.id)
@@ -287,20 +320,35 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     // schedule_events was added after the employee and punch tables. Keep
     // deletion working against databases that have not applied that migration.
     const hasScheduleEvents = await db.schema.hasTable('schedule_events')
+    const removedPhotos = []
     await db.transaction(async trx => {
       const query = trx('employees').where({ id: res.locals.employeeId })
       if (trx.client.config.client === 'pg') query.forUpdate()
-      if (!await query.first()) return
+      const employee = await query.first()
+      if (!employee) return
+      removedPhotos.push(employee.photo, ...await trx('entries').where({ employee_id: employee.id }).pluck('punch_photo'))
       await trx('entries').where({ employee_id: res.locals.employeeId }).delete()
       if (hasScheduleEvents) await trx('schedule_events').where({ employee_id: res.locals.employeeId }).delete()
       await trx('employees').where({ id: res.locals.employeeId }).delete()
     })
+    await photos.discardMany(removedPhotos)
     res.sendStatus(204)
   })
   app.post('/api/employees/:id/photo', async (req, res) => {
     const { photo } = req.body || {}
     if (!validPhoto(photo)) return res.status(400).json({ error: 'Envie uma foto JPEG, PNG ou WebP de até 250 KB.' })
-    await db('employees').where({ id: res.locals.employeeId }).update({ photo: photo || null })
+    let storedPhoto, previous
+    try {
+      storedPhoto = await photos.put(photo, `employees/${res.locals.employeeId}`)
+      await db.transaction(async trx => {
+        const query = trx('employees').where({ id: res.locals.employeeId })
+        if (trx.client.config.client === 'pg') query.forUpdate()
+        previous = await query.first()
+        if (!previous) throw new Error('Funcionário removido durante a atualização.')
+        await trx('employees').where({ id: previous.id }).update({ photo: storedPhoto })
+      })
+    } catch (error) { await photos.discard(storedPhoto); throw error }
+    await photos.discard(previous.photo)
     res.sendStatus(204)
   })
   app.post('/api/employees/:id/schedule', async (req, res) => {
@@ -325,7 +373,10 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     try { await db('employees').where({ id: res.locals.employeeId }).update({ pin_digest: await pinDigest(db, pin) }); res.sendStatus(204) }
     catch (error) { if (['SQLITE_CONSTRAINT_UNIQUE', '23505'].includes(error.code)) return res.status(409).json({ error: 'PIN já utilizado por outro funcionário.' }); throw error }
   })
-  app.get('/api/employees/:id/entries', async (req, res) => res.json(await db('entries').select('id', 'employee_id', 'kind', 'occurred_at', 'break_name', 'punch_photo', 'face_detected', 'divergence_status', 'divergence_reason', 'admin_confirmed', 'admin_confirmed_at').where({ employee_id: res.locals.employeeId }).orderBy('id')))
+  app.get('/api/employees/:id/entries', async (req, res) => {
+    const entries = await db('entries').select('id', 'employee_id', 'kind', 'occurred_at', 'break_name', 'punch_photo', 'face_detected', 'divergence_status', 'divergence_reason', 'admin_confirmed', 'admin_confirmed_at').where({ employee_id: res.locals.employeeId }).orderBy('id')
+    res.json(await photos.expose(entries))
+  })
   app.get('/api/entry-alerts', async (req, res) => {
     const rawPage = req.query.page ?? '1'
     if (typeof rawPage !== 'string' || !/^[1-9]\d{0,5}$/.test(rawPage)) return res.status(400).json({ error: 'Página inválida.' })
@@ -346,7 +397,8 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     const entry = await db('entries').where({ id }).first()
     if (!entry) return res.status(404).json({ error: 'Batida não encontrada.' })
     const employee = await db('employees').where({ id: entry.employee_id }).first()
-    res.json({ entry, employee: publicEmployee(employee) })
+    const [visibleEntry, visibleEmployee] = await photos.expose([entry, publicEmployee(employee)])
+    res.json({ entry: visibleEntry, employee: visibleEmployee })
   })
   app.post('/api/entries/:id/confirm', async (req, res) => {
     const id = Number(req.params.id)
@@ -359,7 +411,7 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
       admin_confirmed_at: new Date().toISOString(),
       divergence_status: status,
     })
-    res.json(await db('entries').where({ id }).first())
+    res.json(await publicEntry(await db('entries').where({ id }).first()))
   })
   app.post('/api/entries/:id/reject', async (req, res) => {
     const id = Number(req.params.id)
@@ -371,7 +423,7 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
       admin_confirmed_at: new Date().toISOString(),
       divergence_status: 'rejected',
     })
-    res.json(await db('entries').where({ id }).first())
+    res.json(await publicEntry(await db('entries').where({ id }).first()))
   })
   app.post('/api/entries/:id/analyze', async (req, res) => {
     const id = Number(req.params.id)
@@ -379,11 +431,11 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     const entry = await db('entries').where({ id }).first()
     if (!entry) return res.status(404).json({ error: 'Batida não encontrada.' })
     if (!entry.punch_photo) return res.status(400).json({ error: 'Batida sem foto.' })
-    if (entry.admin_confirmed) return res.json(entry)
+    if (entry.admin_confirmed) return res.json(await publicEntry(entry))
     const employee = await db('employees').where({ id: entry.employee_id }).first()
     const analysis = await analyzer({
-      punchPhoto: entry.punch_photo,
-      employeePhoto: employee?.photo,
+      punchPhoto: await photos.dataUrl(entry.punch_photo),
+      employeePhoto: await photos.dataUrl(employee?.photo),
     })
     if (analysis) {
       await db('entries').where({ id, admin_confirmed: false }).update({
@@ -392,11 +444,12 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
         divergence_reason: analysis.divergence_reason,
       })
     }
-    res.json(await db('entries').where({ id }).first())
+    res.json(await publicEntry(await db('entries').where({ id }).first()))
   })
   app.use('/api', (req, res) => res.status(404).json({ error: 'Rota não encontrada.' }))
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error)
+    if (error instanceof SupabaseError) return res.status(error.status).json({ error: error.message })
     if (error.type === 'entity.too.large') return res.status(413).json({ error: 'Foto muito grande. Escolha uma imagem menor.' })
     if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'JSON inválido.' })
     const code = error.code || error.name

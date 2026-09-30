@@ -2,7 +2,7 @@
 
 React + Vite, backend Express no mesmo projeto e PostgreSQL/Supabase ou SQLite com Knex. Duas interfaces independentes compartilham a API:
 
-- `/#/terminal`: terminal do funcionário, apenas para marcar ponto por PIN.
+- `/#/terminal`: login de acesso ao terminal; após entrar, os funcionários marcam ponto por PIN.
 - `/#/admin`: login administrativo, cadastro de funcionários, dashboard e relatórios.
 
 ## Iniciar
@@ -21,7 +21,7 @@ Abra a URL do Vite e acrescente `/#/admin` para entrar. Cadastre os funcionário
 
 ## Funcionário
 
-Abra `/#/terminal` no aparelho compartilhado. Digite o PIN e clique em **Marcar ponto**. O backend identifica o funcionário pelo PIN, define o horário e registra a batida. O campo é apagado após cada tentativa; não há sessão de funcionário. A confirmação desaparece após 6 segundos.
+Abra `/#/terminal` no aparelho compartilhado e faça o login para liberar o terminal. No modo local, use o usuário e a senha administrativos existentes; com Supabase Auth configurado, use a conta vinculada ao terminal. Esse acesso não libera o painel administrativo. Depois digite o PIN e clique em **Marcar ponto**. O backend identifica o funcionário pelo PIN, define o horário e registra a batida. O campo é apagado após cada tentativa; não há sessão de funcionário. A confirmação desaparece após 6 segundos.
 
 No modo automático:
 
@@ -31,7 +31,7 @@ No modo automático:
 
 Para fazer uma pausa, selecione **Iniciar intervalo** antes de digitar o PIN e marcar. Também é possível selecionar explicitamente entrada, saída ou retorno. A API valida a sequência. Envios repetidos com o mesmo identificador não duplicam batidas; novas batidas para a mesma pessoa exigem intervalo mínimo de 5 segundos.
 
-O terminal não tem acesso à lista de funcionários, históricos ou relatórios. O PIN é sempre necessário e o backend ignora qualquer identificação de funcionário enviada pelo terminal.
+O terminal não tem acesso à lista de funcionários, históricos ou relatórios. A sessão do terminal e o PIN são sempre necessários; o backend ignora qualquer identificação de funcionário enviada pelo terminal.
 
 ## Administrador
 
@@ -72,7 +72,7 @@ As duas interfaces estão no mesmo frontend, com URLs separadas e permissões ap
 
 ## Autenticação
 
-Senhas administrativas usam scrypt com salt; PINs usam digest HMAC com chave aleatória persistida no banco e nunca são retornados pela API. Sessões administrativas duram 8 horas, são revogadas no logout e têm apenas o hash do token salvo no banco. O frontend mantém o token apenas em memória: recarregar a página exige novo login.
+Senhas administrativas usam scrypt com salt; PINs usam digest HMAC com chave aleatória persistida no banco e nunca são retornados pela API. Sessões administrativas duram 8 horas, são revogadas no logout e têm apenas o hash do token salvo no banco. O login administrativo oferece a opção de lembrar por até oito horas. O terminal tem sua própria sessão e opção de lembrar no aparelho, sem compartilhar a sessão administrativa.
 
 Login e terminal possuem limite de tentativas persistido por IP (10 por 15 minutos e 30 por minuto, respectivamente). Atrás de proxy, por padrão o limite considera o IP do proxy. Use HTTPS ao disponibilizar acesso remoto. O PIN tem apenas 4 números e é adequado ao fluxo solicitado de terminal compartilhado; mantenha o banco e o acesso ao terminal protegidos.
 
@@ -81,6 +81,12 @@ Login e terminal possuem limite de tentativas persistido por IP (10 por 15 minut
 Públicas:
 
 - `POST /api/auth/login`: `username`, `password` → token administrativo.
+- `POST /api/terminal/login`: `username`, `password` → sessão restrita ao terminal.
+
+Exclusivas do terminal autenticado (`Authorization: Bearer <token-do-terminal>`):
+
+- `POST /api/terminal/logout`: encerra a sessão do terminal.
+- `GET /api/terminal/me`: verifica a sessão.
 - `POST /api/terminal/punch`: `pin`, `kind` (padrão `auto`), `request_id` (UUID por tentativa lógica).
 
 Exclusivas do administrador, com `Authorization: Bearer <token>`:
@@ -212,3 +218,12 @@ O sino na barra superior do app administrativo mostra o total de batidas com **p
 Toque no alerta para abrir a foto da batida junto à foto cadastrada e validar ou marcar a foto como errada. Abrir a notificação não a resolve: ela sai das pendências somente após revisão e permanece no histórico. A lista é paginada e as fotos são carregadas apenas ao abrir cada caso. Resultados automáticos atrasados não sobrescrevem decisões do administrador.
 
 Os alertas usam os resultados da análise de fotos existente (configurada com `GEMINI_API_KEY`). Batidas ainda em análise não são apresentadas como divergência confirmada. Uma indicação de possível divergência deve ser conferida pelo administrador.
+
+
+## Login do terminal, Supabase Auth e fotos no Storage
+
+O aplicativo exige login antes de abrir o terminal. Os funcionários continuam usando a senha de quatro números para bater ponto. O painel administrativo mantém o login atual e a sessão separada.
+
+A configuração e a migração gradual estão em [docs/supabase.md](docs/supabase.md). Novas variáveis: `TERMINAL_AUTH_PROVIDER`, `PHOTO_STORAGE`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_STORAGE_BUCKET` e `AUTH_SESSION_ENCRYPTION_KEY`, exclusivamente no backend.
+
+Execute a migration 015 antes de publicar. API e APK precisam ser atualizados juntos: versões antigas do terminal não enviam o novo token de acesso.

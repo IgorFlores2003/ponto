@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "concurrently -k -n api,web \"npm:dev:server\" \"npm:dev:web\"",
     "build": "tsc -b --force && vite build",
+    "test": "node --test tests/*.test.mjs",
     "preview": "vite preview",
     "dev:web": "vite",
     "dev:server": "node --watch server/index.js",
@@ -15,7 +16,10 @@
     "db:migrate": "node server/migrate.js",
     "db:check": "node server/check-db.js",
     "capacitor:sync:before": "npm run build",
-    "android:sync": "cap sync android"
+    "android:sync": "cap sync android",
+    "supabase:storage:setup": "node server/setup-supabase-storage.js",
+    "photos:migrate": "node server/migrate-photos.js",
+    "supabase:terminal:link": "node server/link-supabase-terminal.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",

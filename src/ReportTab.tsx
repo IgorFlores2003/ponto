@@ -6,7 +6,7 @@ import DivergenceBadge from './DivergenceBadge'
 import PunchPhotoModal from './PunchPhotoModal'
 import { buildCsv, buildExcel, buildPdf } from './reportExports'
 import { deliverFile } from './deliverFile'
-import { hours, money, timestamp, INPUT_CLASS, type Employee, type Entry, type Report } from './types'
+import { formatDate, hours, money, timestamp, INPUT_CLASS, type Employee, type Entry, type Report } from './types'
 
 interface Props {
   report: Report
@@ -69,13 +69,13 @@ export default function ReportTab({
   )
 
   function exportCsv() {
-    void deliverFile(buildCsv(report, selected), `horas-${report.from}-${report.to}.csv`)
+    void deliverFile(buildCsv(report, selected), `horas-${formatDate(report.from).replace(/\//g, '-')}-${formatDate(report.to).replace(/\//g, '-')}.csv`)
   }
   function exportExcel() {
-    void deliverFile(buildExcel(report, selected), `relatorio-horas-${report.from}-${report.to}.xls`)
+    void deliverFile(buildExcel(report, selected), `relatorio-horas-${formatDate(report.from).replace(/\//g, '-')}-${formatDate(report.to).replace(/\//g, '-')}.xls`)
   }
   async function exportPdf() {
-    void deliverFile(await buildPdf(report, selected), `relatorio-horas-${report.from}-${report.to}.pdf`)
+    void deliverFile(await buildPdf(report, selected), `relatorio-horas-${formatDate(report.from).replace(/\//g, '-')}-${formatDate(report.to).replace(/\//g, '-')}.pdf`)
   }
 
   const selectedEmployee = employees.find(e => String(e.id) === selected)

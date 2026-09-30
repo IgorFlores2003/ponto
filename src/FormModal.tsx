@@ -34,7 +34,7 @@ export default function FormModal({ title, busy = false, onClose, children }: Pr
           aria-label="Fechar janela"
           disabled={busy}
           onClick={onClose}
-          className="grid size-10 shrink-0 place-items-center rounded-[10px] bg-[#e1eee5] text-[#23573d] transition hover:bg-[#d2e4d7] disabled:opacity-55"
+          className="grid size-12 shrink-0 place-items-center rounded-[10px] bg-[#e1eee5] text-[#23573d] transition hover:bg-[#d2e4d7] disabled:opacity-55"
         >
           <FiX size={20} aria-hidden="true" />
         </button>

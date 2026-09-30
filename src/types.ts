@@ -63,11 +63,13 @@ export type Report = {
 // ─── Constantes de estilo compartilhadas ─────────────────────────────────────
 
 export const INPUT_CLASS =
-  'min-w-0 w-full rounded-xl border border-[#cbded2] bg-white p-3 text-sm text-[#315847] focus-visible:outline-2 focus-visible:outline-[#31835b]'
+  'min-h-12 min-w-0 w-full rounded-xl border border-[#9fbaa9] bg-white p-3 text-base text-[#234c37] focus-visible:outline-2 focus-visible:outline-[#31835b]'
 
-export const LABEL_CLASS = 'grid gap-1.5 text-xs font-bold text-[#527566]'
+export const LABEL_CLASS = 'grid min-w-0 gap-2 text-sm font-bold text-[#315847]'
 
 // ─── Utilitários de data/hora ─────────────────────────────────────────────────
+
+export const formatDate = (value: string) => value ? value.slice(0, 10).split('-').reverse().join('/') : ''
 
 export const day = () =>
   new Intl.DateTimeFormat('en-CA', {
@@ -98,6 +100,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    public code?: string,
   ) {
     super(message)
   }
@@ -114,7 +117,7 @@ export async function api<T>(path: string, body?: unknown, token?: string): Prom
   })
   if (response.status === 204) return undefined as T
   const data = await response.json().catch(() => null)
-  if (!response.ok) throw new ApiError(data?.error || `Falha na operação (HTTP ${response.status}).`, response.status)
+  if (!response.ok) throw new ApiError(data?.error || `Falha na operação (HTTP ${response.status}).`, response.status, data?.code)
   if (data === null) throw new ApiError('O servidor retornou uma resposta inválida.', response.status)
   return data
 }

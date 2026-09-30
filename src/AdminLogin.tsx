@@ -13,7 +13,7 @@ function loadSavedToken(): string | null {
   const token = localStorage.getItem('admin_token')
   const expiresAt = localStorage.getItem('admin_token_expires')
   if (!token || !expiresAt) return null
-  if (Date.now() >= Number(expiresAt)) {
+  if (!Number.isFinite(Number(expiresAt)) || Date.now() >= Number(expiresAt)) {
     localStorage.removeItem('admin_token')
     localStorage.removeItem('admin_token_expires')
     return null
@@ -36,10 +36,10 @@ export default function AdminLogin({ onLogin }: Props) {
     setBusy(true)
     setError('')
     try {
-      const result = await api<{ token: string }>('/auth/login', { username, password })
+      const result = await api<{ token: string; expires_at: number }>('/auth/login', { username, password })
       if (rememberMe) {
         localStorage.setItem('admin_token', result.token)
-        localStorage.setItem('admin_token_expires', String(Date.now() + REMEMBER_DURATION))
+        localStorage.setItem('admin_token_expires', String(Math.min(result.expires_at, Date.now() + REMEMBER_DURATION)))
       } else {
         localStorage.removeItem('admin_token')
         localStorage.removeItem('admin_token_expires')
@@ -75,6 +75,9 @@ export default function AdminLogin({ onLogin }: Props) {
           Usuário
           <input
             required
+            type="text"
+            autoCapitalize="none"
+            spellCheck={false}
             autoComplete="username"
             value={username}
             className={INPUT_CLASS}

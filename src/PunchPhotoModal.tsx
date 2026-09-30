@@ -22,6 +22,7 @@ export default function PunchPhotoModal({
   onConfirmed,
 }: Props) {
   const [currentEntry, setCurrentEntry] = useState(entry)
+  const [currentEmployee, setCurrentEmployee] = useState(employee)
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState('')
 
@@ -29,6 +30,17 @@ export default function PunchPhotoModal({
   useEffect(() => {
     setCurrentEntry(entry)
   }, [entry])
+
+  // Refresh temporary photo URLs when reopening an old history entry.
+  useEffect(() => {
+    setCurrentEmployee(employee)
+    if (!token) return
+    let active = true
+    api<{ entry: Entry; employee: Employee }>(`/entries/${entry.id}`, undefined, token)
+      .then(detail => { if (active) { setCurrentEntry(detail.entry); setCurrentEmployee(detail.employee) } })
+      .catch(() => { if (active) setError('Não foi possível atualizar as fotos. Feche esta janela e tente novamente.') })
+    return () => { active = false }
+  }, [entry.id, token])
 
   // Se a análise ainda estiver pendente, dispara imediatamente para não deixar aguardando
   useEffect(() => {
@@ -99,13 +111,13 @@ export default function PunchPhotoModal({
       <div className="min-w-0 [overflow-wrap:anywhere]">
         <div className="border-b border-[#edf0ee] pb-3">
           <h4 className="text-sm font-bold text-[#143f31]">{title}</h4>
-          <p className="text-[11px] text-[#82958b]">{employee?.name} · {time}</p>
+          <p className="text-[11px] text-[#82958b]">{currentEmployee?.name} · {time}</p>
         </div>
 
         {/* Comparação de Fotos - Imagens inteiras sem corte */}
         {!currentEntry.punch_photo ? (
           <p className="mt-4 rounded-xl bg-[#fff0f0] p-3 text-xs text-[#913939]">Foto da batida indisponível. Confira os dados do registro antes de decidir.</p>
-        ) : employee?.photo ? (
+        ) : currentEmployee?.photo ? (
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div>
               <span className="mb-1 block text-center text-[11px] font-bold text-[#315847]">
@@ -125,7 +137,7 @@ export default function PunchPhotoModal({
               </span>
               <div className="flex h-56 sm:h-64 w-full items-center justify-center overflow-hidden rounded-xl border border-[#cbded2] bg-neutral-950 p-1 shadow-inner">
                 <img
-                  src={employee.photo}
+                  src={currentEmployee.photo}
                   alt="Foto cadastrada do funcionário"
                   className="max-h-full max-w-full object-contain"
                 />

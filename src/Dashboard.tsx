@@ -132,40 +132,38 @@ export default function Dashboard({ report, receivedAt, syncError, onHistory, fi
       </section>
 
       <h3 className="text-sm font-semibold text-[#143f31]">Acompanhamento por funcionário</h3>
-      <p className="mt-0.5 text-[11px] text-[#82958b]">Os tempos seguem o período escolhido. A situação indica a última batida atual.</p>
+      <p className="mt-0.5 text-[11px] text-[#82958b]">Clique em um funcionário para expandir ou recolher as horas do período. A situação indica a última batida atual.</p>
 
       <div className="mt-4 grid gap-3.5">
         {rows.map(row => (
-          <article
-            className="relative min-w-0 overflow-hidden rounded-[18px] border border-[#dce8e1] bg-white p-4 sm:p-5 transition duration-150 hover:border-[#4b916d] hover:shadow-[0_4px_16px_rgba(20,63,49,0.08)]"
+          <details
+            className="group min-w-0 overflow-hidden rounded-[18px] border border-[#dce8e1] bg-white p-4 sm:p-5 transition duration-150 hover:border-[#4b916d] hover:shadow-[0_4px_16px_rgba(20,63,49,0.08)]"
             key={row.id}
           >
-            <button
-              className="absolute inset-0 z-10 size-full rounded-[inherit] bg-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#246841]"
-              type="button"
-              aria-label={`Ver histórico de ${row.name}`}
-              onClick={() => onHistory(row.id)}
-            />
-            <div className="flex min-w-0 flex-col items-start gap-2.5 sm:flex-row sm:justify-between">
-              <div className="flex min-w-0 w-full items-center gap-3 sm:flex-1">
-                <Avatar name={row.name} photo={row.photo} />
-                <div className="min-w-0 flex-1">
-                  <h3 className="[overflow-wrap:anywhere] text-sm sm:text-[15px] font-semibold text-[#143f31]">{row.name}</h3>
-                  <p className="[overflow-wrap:anywhere] text-xs sm:text-[13px] text-[#527566]">{row.job_title || 'Função não informada'}</p>
+            <summary className="flex cursor-pointer list-none items-center gap-3 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#246841] [&::-webkit-details-marker]:hidden">
+              <div className="flex min-w-0 flex-1 flex-col items-start gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 w-full items-center gap-3 sm:flex-1">
+                  <Avatar name={row.name} photo={row.photo} />
+                  <div className="min-w-0 flex-1">
+                    <h3 className="[overflow-wrap:anywhere] text-sm sm:text-[15px] font-semibold text-[#143f31]">{row.name}</h3>
+                    <p className="[overflow-wrap:anywhere] text-xs sm:text-[13px] text-[#527566]">{row.job_title || 'Função não informada'}</p>
+                  </div>
                 </div>
+                <span
+                  className={`max-w-full [overflow-wrap:anywhere] rounded-lg px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold ${
+                    row.status === 'Em intervalo'
+                      ? 'border border-[#e8b454] bg-[#ffe0a3] text-[#633a00]'
+                      : row.status === 'Em expediente'
+                      ? 'bg-[#246841] text-white'
+                      : 'bg-[#edf0ee] text-[#59665e]'
+                  }`}
+                >
+                  {row.status === 'Em intervalo' ? `EM PAUSA: ${row.current_break_name || 'Intervalo'}` : row.status === 'Em expediente' ? 'EM SERVIÇO' : 'FORA DO EXPEDIENTE'}
+                </span>
               </div>
-              <span
-                className={`max-w-full [overflow-wrap:anywhere] rounded-lg px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold ${
-                  row.status === 'Em intervalo'
-                    ? 'border border-[#e8b454] bg-[#ffe0a3] text-[#633a00]'
-                    : row.status === 'Em expediente'
-                    ? 'bg-[#246841] text-white'
-                    : 'bg-[#edf0ee] text-[#59665e]'
-                }`}
-              >
-                {row.status === 'Em intervalo' ? `EM PAUSA: ${row.current_break_name || 'Intervalo'}` : row.status === 'Em expediente' ? 'EM SERVIÇO' : 'FORA DO EXPEDIENTE'}
-              </span>
-            </div>
+
+              <FiChevronRight size={20} aria-hidden="true" className="shrink-0 text-[#246841] transition-transform group-open:rotate-90" />
+            </summary>
 
             <div className="mt-3.5 grid grid-cols-[repeat(auto-fit,minmax(min(100%,135px),1fr))] gap-2 sm:gap-3">
               <div className="min-w-0 overflow-hidden rounded-xl bg-[#f0f8f3] p-2.5 sm:p-3">
@@ -215,10 +213,12 @@ export default function Dashboard({ report, receivedAt, syncError, onHistory, fi
               </p>
             )}
 
-            <div className="mt-3 flex items-center gap-1 text-xs font-bold text-[#246841]">
+            <button type="button" onClick={() => onHistory(row.id)}
+              aria-label={`Ver histórico de batidas de ${row.name}`}
+              className="mt-3 flex min-h-11 items-center gap-1 rounded-lg text-xs font-bold text-[#246841] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#246841]">
               Ver histórico de batidas <FiChevronRight size={16} aria-hidden="true" />
-            </div>
-          </article>
+            </button>
+          </details>
         ))}
       </div>
 
