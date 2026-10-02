@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FiLogIn, FiSmartphone } from 'react-icons/fi'
+import { FiLogIn } from 'react-icons/fi'
 import PasswordInput from './PasswordInput'
 import AdminSignup from './AdminSignup'
 import PasswordRecovery from './PasswordRecovery'
@@ -128,15 +128,11 @@ export default function AdminLogin({ onLogin }: Props) {
         </p>
       )}
 
-      <button type="button" disabled={busy} onClick={() => { setPassword(''); setError(''); setSignup(true) }} className="mb-4 min-h-12 w-full rounded-xl border border-[#9fbaa9] px-4 text-sm font-bold text-[#317455]">
-        Criar login
-      </button>
-      <button type="button" disabled={busy} onClick={() => { setPassword(''); setError(''); setRecover(true) }} className="mb-4 min-h-12 w-full text-sm font-bold text-[#317455]">Esqueci minha senha</button>
-
-      <a href="#/terminal" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#317455] hover:text-[#173d2f]">
-        <FiSmartphone size={14} aria-hidden="true" />
-        Voltar ao terminal de ponto
-      </a>
+      <div className="flex items-center justify-center gap-2 text-xs">
+        <button type="button" disabled={busy} onClick={() => { setPassword(''); setError(''); setRecover(true) }} className="min-h-8 px-1 font-medium text-[#527566] underline-offset-2 hover:text-[#173d2f] hover:underline">Esqueci a senha</button>
+        <span aria-hidden="true" className="text-[#a2b5aa]">·</span>
+        <button type="button" disabled={busy} onClick={() => { setPassword(''); setError(''); setSignup(true) }} className="min-h-8 px-1 font-medium text-[#527566] underline-offset-2 hover:text-[#173d2f] hover:underline">Criar conta</button>
+      </div>
     </section>
   )
 }
