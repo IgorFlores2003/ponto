@@ -4,7 +4,7 @@ import AdminLogin, { loadSavedToken } from './AdminLogin'
 import AdminPanel from './AdminPanel'
 import TerminalAccess, { logoutTerminalSession } from './TerminalAccess'
 
-type View = 'terminal' | 'admin-login' | 'admin'
+type View = 'terminal' | 'admin-login' | 'admin-signup' | 'admin-recovery' | 'admin'
 
 function AccessFlow({ notificationTarget, onView }: { notificationTarget: HTMLDivElement | null; onView: (view: View) => void }) {
   const [adminToken, setAdminToken] = useState<string | null>(loadSavedToken)
@@ -26,8 +26,8 @@ function AccessFlow({ notificationTarget, onView }: { notificationTarget: HTMLDi
   useEffect(() => { onView(view) }, [view, onView])
 
   if (view === 'admin' && adminToken) return <AdminPanel token={adminToken} onExit={() => setView('terminal')} onLogout={() => void logoutAccount()} onUnauthorized={() => { clearAdminToken(); setView('admin-login') }} notificationTarget={notificationTarget} />
-  if (view === 'admin-login') return <AdminLogin onBack={() => setView('terminal')} onLogin={newToken => { setAdminToken(newToken); setView('admin') }} />
-  return <TerminalAccess onAdmin={() => setView(adminToken ? 'admin' : 'admin-login')} />
+  if (view === 'admin-login' || view === 'admin-signup' || view === 'admin-recovery') return <AdminLogin key={view} initialMode={view === 'admin-signup' ? 'signup' : view === 'admin-recovery' ? 'recover' : 'login'} onBack={() => setView('terminal')} onLogin={newToken => { setAdminToken(newToken); setView('admin') }} />
+  return <TerminalAccess onAdmin={() => setView(adminToken ? 'admin' : 'admin-login')} onCreateAccount={() => setView('admin-signup')} onForgotPassword={() => setView('admin-recovery')} />
 }
 
 // ─── Shell principal: roteamento por hash ─────────────────────────────────────
@@ -46,7 +46,7 @@ export default function App() {
             <span className="mb-1 block text-[10px] font-bold tracking-[0.14em] text-[#789185]">PONTO DIGITAL</span>
             <div className="flex items-center gap-3">
               <h1 className="min-w-0 font-['Manrope',sans-serif] text-lg font-extrabold text-[#143f31]">
-                {view === 'admin' ? 'Área administrativa' : view === 'admin-login' ? 'Login administrativo' : 'Terminal de ponto'}
+                {view === 'admin' ? 'Área administrativa' : view === 'admin-login' || view === 'admin-signup' || view === 'admin-recovery' ? 'Acesso administrativo' : 'Terminal de ponto'}
               </h1>
               {view === 'admin' && <div ref={setNotificationTarget} className="shrink-0" />}
             </div>

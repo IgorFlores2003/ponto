@@ -29,8 +29,8 @@ function loadSession(): Session | null {
   return null
 }
 
-type Props = { onAdmin?: () => void }
-export default function TerminalAccess({ onAdmin }: Props) {
+type Props = { onAdmin?: () => void; onCreateAccount?: () => void; onForgotPassword?: () => void }
+export default function TerminalAccess({ onAdmin, onCreateAccount, onForgotPassword }: Props) {
   const [session, setSession] = useState<Session | null>(loadSession)
   const [provider, setProvider] = useState<'local' | 'supabase' | null>(null)
   const [attempt, setAttempt] = useState(0)
@@ -125,6 +125,11 @@ export default function TerminalAccess({ onAdmin }: Props) {
     </form>
     {error && <p role="alert" className="mt-4 rounded-xl bg-[#fff0f0] p-3 text-base text-[#913939]">{error}</p>}
     {!provider && error && <button type="button" onClick={retry} className="mt-3 min-h-12 rounded-xl border border-[#9fbaa9] px-4 font-bold text-[#315847]">Tentar novamente</button>}
+    {(onForgotPassword || onCreateAccount) && <div className="mt-1 flex items-center justify-center gap-2 text-xs">
+      {onForgotPassword && <button type="button" onClick={onForgotPassword} className="min-h-8 px-1 font-medium text-[#527566] underline-offset-2 hover:text-[#173d2f] hover:underline">Esqueci a senha</button>}
+      {onForgotPassword && onCreateAccount && <span aria-hidden="true" className="text-[#a2b5aa]">·</span>}
+      {onCreateAccount && <button type="button" onClick={onCreateAccount} className="min-h-8 px-1 font-medium text-[#527566] underline-offset-2 hover:text-[#173d2f] hover:underline">Criar conta</button>}
+    </div>}
     {onAdmin && <button type="button" onClick={onAdmin} className="mt-3 flex min-h-12 w-full items-center justify-center text-sm font-semibold text-[#527566]">Acessar administrativo</button>}
   </section>
 }

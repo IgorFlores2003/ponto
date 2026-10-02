@@ -8,6 +8,7 @@ import { api, ApiError, errorMessage, INPUT_CLASS, LABEL_CLASS } from './types'
 interface Props {
   onLogin: (token: string) => void
   onBack: () => void
+  initialMode?: 'login' | 'signup' | 'recover'
 }
 
 const REMEMBER_DURATION = 8 * 60 * 60 * 1000 // 8 horas
@@ -27,9 +28,9 @@ function loadSavedToken(): string | null {
 export { loadSavedToken }
 
 /** Tela de login do administrador. */
-export default function AdminLogin({ onLogin, onBack }: Props) {
-  const [signup, setSignup] = useState(false)
-  const [recover, setRecover] = useState(false)
+export default function AdminLogin({ onLogin, onBack, initialMode = 'login' }: Props) {
+  const [signup, setSignup] = useState(initialMode === 'signup')
+  const [recover, setRecover] = useState(initialMode === 'recover')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
