@@ -1,4 +1,6 @@
 import DateInput from './DateInput'
+import AdminApprovals from './AdminApprovals'
+import ChangePassword from './ChangePassword'
 import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { FiSmartphone, FiLogOut, FiRefreshCw } from 'react-icons/fi'
@@ -179,6 +181,8 @@ export default function AdminPanel({ token, onExit, notificationTarget }: Props)
       </div>
 
       <BottomNav active={tab} onChange={setTab} />
+      {tab === 'dashboard' && <AdminApprovals token={token} />}
+      {tab === 'dashboard' && <ChangePassword token={token} onChanged={onExit} />}
 
       {error && (
         <div role="alert" className="mb-5 rounded-xl border border-[#e5b8b8] bg-[#fff0f0] p-3 text-[13px] text-[#913939]">

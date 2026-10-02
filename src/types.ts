@@ -8,6 +8,7 @@ export type Employee = {
   job_title: string
   photo: string | null
   overtime_rate_cents: number | null
+  hourly_rate_cents: number | null
   target_hours: number
   work_minutes: number
   break_minutes: number
@@ -33,6 +34,9 @@ export type Entry = {
 }
 
 export type ReportRow = Employee & {
+  regular_work_seconds: number
+  regular_pay_cents: number | null
+  total_pay_cents: number | null
   overtime_pay_cents: number | null
   off_day_work_seconds: number
   excused_seconds: number

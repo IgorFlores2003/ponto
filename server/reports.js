@@ -66,8 +66,13 @@ export function reportFor(employees, entries, from, to, now = Date.now(), events
     const debt_seconds = Math.max(0, expected_seconds - (fulfilled_seconds - off_day_work_seconds))
     const overtime_pay_cents = employee.overtime_rate_cents == null ? null
       : Math.round(off_day_work_seconds * employee.overtime_rate_cents / 3600)
+    const regular_work_seconds = Math.max(0, workSeconds - off_day_work_seconds)
+    const regular_pay_cents = employee.hourly_rate_cents == null ? null
+      : Math.round(regular_work_seconds * employee.hourly_rate_cents / 3600)
+    const total_pay_cents = (regular_work_seconds > 0 && regular_pay_cents == null) || (off_day_work_seconds > 0 && overtime_pay_cents == null)
+      ? null : (regular_pay_cents ?? 0) + (overtime_pay_cents ?? 0)
     const extra_break_seconds = Math.max(0, breakSeconds - expected_break_seconds)
-    return { ...employee, expected_days: expectedDays, overtime_pay_cents, off_day_work_seconds, excused_seconds, fulfilled_seconds, current_excused_seconds, current_off_day, expected_seconds, expected_break_seconds, debt_seconds, extra_break_seconds, minutes: Math.floor(total / 60000), work_seconds: workSeconds, break_seconds: breakSeconds,
+    return { ...employee, regular_work_seconds, regular_pay_cents, total_pay_cents, expected_days: expectedDays, overtime_pay_cents, off_day_work_seconds, excused_seconds, fulfilled_seconds, current_excused_seconds, current_off_day, expected_seconds, expected_break_seconds, debt_seconds, extra_break_seconds, minutes: Math.floor(total / 60000), work_seconds: workSeconds, break_seconds: breakSeconds,
       current_break_name: paused !== null ? breakName : null, break_totals: [...totals].map(([name, ms]) => ({ name, seconds: Math.floor(ms / 1000) })),
       current_since: opened !== null ? new Date(opened).toISOString() : paused !== null ? new Date(paused).toISOString() : null,
       punches: history.filter(e => Date.parse(e.occurred_at) >= start && Date.parse(e.occurred_at) < end && Date.parse(e.occurred_at) <= now).length,

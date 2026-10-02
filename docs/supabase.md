@@ -6,7 +6,7 @@ O backend ainda precisa de hospedagem; esta integração não cria infraestrutur
 - PostgreSQL mantém funcionários, batidas, escalas e os caminhos das fotos.
 - Storage guarda os arquivos em `ponto-fotos`, um bucket privado.
 - Supabase Auth valida o login que libera o **terminal**. Depois de entrar, cada funcionário continua usando sua senha de quatro números para bater ponto.
-- O **painel administrativo mantém o usuário e a senha atuais**, em um login separado. A sessão do terminal nunca autoriza cadastros, fotos, notificações ou relatórios administrativos.
+- O **painel administrativo mantém o usuário e a senha atuais**, em um login separado. Novas contas por e-mail podem ser habilitadas com confirmação e aprovação, conforme [cadastro e senhas](auth-email.md). A sessão do terminal nunca autoriza cadastros, fotos, notificações ou relatórios administrativos.
 - A conta do Supabase Auth precisa ser vinculada a `terminal_users`. Uma conta qualquer do mesmo projeto não libera este terminal. O campo `active=false` bloqueia o acesso.
 - O aplicativo recebe somente uma sessão opaca de oito horas. Tokens do Supabase ficam criptografados no backend, com renovação automática e verificação do usuário no Auth. Logout encerra a sessão local e tenta revogar também a sessão remota. As sessões de terminal e admin usam tabelas e chaves de armazenamento distintas.
 - Fotos são acessadas por URLs assinadas de uma hora, emitidas após autorização administrativa. O arquivo é baixado diretamente do Storage; credenciais e uploads ficam no backend. Quem possuir uma URL assinada pode acessar aquela foto até ela expirar.
@@ -50,7 +50,7 @@ Auth e Storage não são ativados automaticamente: faltam as chaves, o bucket, a
 
 ## Operação
 
-Fotos substituídas ou de funcionários excluídos são removidas do Storage após a alteração no banco. Se a limpeza remota falhar, poderá sobrar um objeto sem referência; o servidor registra um aviso para revisão. Defina o período de retenção antes de configurar exclusão automática.
+Fotos substituídas ou de funcionários excluídos são removidas do Storage após a alteração no banco. Se a limpeza remota falhar, poderá sobrar um objeto sem referência; o servidor registra um aviso para revisão. A rotina de retenção de dois meses para fotos e seu agendamento estão descritos em [retenção de fotos](photo-retention.md).
 
 Atrás de um único proxy confiável, configure `TRUST_PROXY=1` e restrinja a porta Node ao proxy. Isso permite limitar tentativas pelo IP real. Mantenha HTTPS, cópias dos dados e alertas de indisponibilidade.
 

@@ -4,7 +4,8 @@ import ActionIcon from './ActionIcon'
 import { Avatar } from './EmployeePhoto'
 import DivergenceBadge from './DivergenceBadge'
 import PunchPhotoModal from './PunchPhotoModal'
-import { buildCsv, buildExcel, buildPdf } from './reportExports'
+import { buildCsv, buildPdf } from './reportExports'
+import { buildSpreadsheet } from './reportSpreadsheet'
 import { deliverFile } from './deliverFile'
 import { formatDate, hours, money, timestamp, INPUT_CLASS, type Employee, type Entry, type Report } from './types'
 
@@ -35,6 +36,8 @@ export default function ReportTab({
   onEntryUpdated,
 }: Props) {
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
 
   // Sincroniza a batida selecionada caso ela seja atualizada em background pela IA
   useMemo(() => {
@@ -71,8 +74,12 @@ export default function ReportTab({
   function exportCsv() {
     void deliverFile(buildCsv(report, selected), `horas-${formatDate(report.from).replace(/\//g, '-')}-${formatDate(report.to).replace(/\//g, '-')}.csv`)
   }
-  function exportExcel() {
-    void deliverFile(buildExcel(report, selected), `relatorio-horas-${formatDate(report.from).replace(/\//g, '-')}-${formatDate(report.to).replace(/\//g, '-')}.xls`)
+  async function exportExcel() {
+    setExporting(true); setExportError('')
+    try {
+      await deliverFile(await buildSpreadsheet(report, selected), `relatorio-horas-${report.from}-${report.to}.xlsx`)
+    } catch { setExportError('Não foi possível gerar a planilha. Tente novamente.') }
+    finally { setExporting(false) }
   }
   async function exportPdf() {
     void deliverFile(await buildPdf(report, selected), `relatorio-horas-${formatDate(report.from).replace(/\//g, '-')}-${formatDate(report.to).replace(/\//g, '-')}.pdf`)
@@ -98,8 +105,9 @@ export default function ReportTab({
         <button
           className="flex items-center gap-1.5 rounded-[13px] bg-[#cef1d6] px-4 py-2.5 text-xs font-bold text-[#173d2f] transition hover:bg-[#e1f9e6]"
           onClick={exportExcel}
+          disabled={exporting}
         >
-          <FiFileText size={15} aria-hidden="true" /> Baixar Excel
+          <FiFileText size={15} aria-hidden="true" /> {exporting ? 'Gerando planilha…' : 'Planilha (Excel / Sheets)'}
         </button>
         <button
           className="flex items-center gap-1.5 rounded-[13px] border border-[#7eae91] bg-[#2a674f] px-4 py-2.5 text-xs font-bold text-[#d7f1df] transition hover:bg-[#347a5e]"
@@ -114,6 +122,8 @@ export default function ReportTab({
           <FiDownload size={13} aria-hidden="true" /> CSV
         </button>
       </div>
+      {exportError && <p role="alert" className="mb-4 text-sm text-[#913939]">{exportError}</p>}
+      <p className="mb-3 text-xs text-[#527566]">Total trabalhado em reais = horas normais × tarifa normal + extras na folga × tarifa extra. Intervalos e atestados não entram nesse valor. Os cálculos usam as tarifas atuais.</p>
 
       <div className="my-5 overflow-x-auto">
         <table className="w-full border-collapse text-left text-[13px]">
@@ -122,6 +132,10 @@ export default function ReportTab({
               <th className="px-2.5 py-3.5">Funcionário</th>
               <th className="px-2.5 py-3.5">Previstas</th>
               <th className="px-2.5 py-3.5">Serviço</th>
+              <th className="px-2.5 py-3.5">Horas normais</th>
+              <th className="px-2.5 py-3.5">Valor/h normal</th>
+              <th className="px-2.5 py-3.5">Valor horas normais</th>
+              <th className="px-2.5 py-3.5">Total trabalhado (R$)</th>
               <th className="px-2.5 py-3.5">Abonadas (atestado)</th>
               <th className="px-2.5 py-3.5">Total cumprido</th>
               <th className="px-2.5 py-3.5">Extras na folga</th>
@@ -145,6 +159,10 @@ export default function ReportTab({
                   {hours(Math.floor(row.expected_seconds / 60))}
                 </td>
                 <td className="px-2.5 py-3.5 tabular-nums">{hours(row.minutes)}</td>
+                <td className="px-2.5 py-3.5 tabular-nums">{hours(Math.floor(row.regular_work_seconds / 60))}</td>
+                <td className="px-2.5 py-3.5 tabular-nums">{money(row.hourly_rate_cents)}</td>
+                <td className="px-2.5 py-3.5 tabular-nums">{money(row.regular_pay_cents)}</td>
+                <td className="px-2.5 py-3.5 tabular-nums">{money(row.total_pay_cents)}</td>
                 <td className="px-2.5 py-3.5 tabular-nums">{hours(Math.floor(row.excused_seconds / 60))}</td>
                 <td className="px-2.5 py-3.5 tabular-nums">{hours(Math.floor(row.fulfilled_seconds / 60))}</td>
                 <td className="px-2.5 py-3.5 tabular-nums">{hours(Math.floor(row.off_day_work_seconds / 60))}</td>

@@ -2,12 +2,15 @@ import express from 'express'
 import { validPhoto } from './photos.js'
 import { createPhotoStorage } from './photo-storage.js'
 import { createSessionAuth } from './session-auth.js'
+import { createAdminRegistration } from './admin-registration.js'
+import { createPasswordManagement } from './password-management.js'
 import { supabaseConfig, SupabaseError } from './supabase.js'
 import { analyzePunchPhoto } from './gemini.js'
 import { parseHourlyRate } from '../shared/money.js'
 import { parseDuration } from './durations.js'
 import { matchingBreak, validRule, localDateTime } from './breaks.js'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { prunePhotos } from './photo-retention.js'
 import { pinDigest, rateLimit } from './auth.js'
 import { reportFor, validDate } from './reports.js'
 import { applyCors } from './cors.js'
@@ -16,12 +19,14 @@ import { planScheduleEvents } from './schedule-events.js'
 import { scheduleForDate, monthlyScheduleMinutes } from '../shared/schedule.js'
 function validWorkdays(days) { return Array.isArray(days) && days.every(day => Number.isInteger(day) && day >= 0 && day <= 6) && new Set(days).size === days.length }
 export const transitions = { 'Entrada': ['Saída do almoço', 'Saída', 'Início do intervalo'], 'Saída do almoço': ['Entrada do almoço'], 'Entrada do almoço': ['Saída', 'Início do intervalo'], 'Início do intervalo': ['Fim do intervalo'], 'Fim do intervalo': ['Saída', 'Início do intervalo'], 'Saída': ['Entrada'] }
-const columns = ['id', 'name', 'registration', 'department', 'job_title', 'photo', 'target_hours', 'work_minutes', 'break_minutes', 'workdays', 'overtime_rate_cents', 'created_at']
+const columns = ['id', 'name', 'registration', 'department', 'job_title', 'photo', 'target_hours', 'work_minutes', 'break_minutes', 'workdays', 'overtime_rate_cents', 'hourly_rate_cents', 'created_at']
 const publicEmployee = employee => ({ ...Object.fromEntries(columns.map(key => [key, employee[key]])), active: !!employee.active, has_pin: !!employee.pin_digest })
 export function createApp(db, { clock = () => new Date(), analyzer = analyzePunchPhoto, config = supabaseConfig(), fetcher } = {}) {
   const app = express()
   if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1)
   const auth = createSessionAuth(db, config, fetcher)
+  const registrations = createAdminRegistration(db, config, fetcher)
+  const passwords = createPasswordManagement(db, config, fetcher)
   const terminalAuth = createSessionAuth(db, config, fetcher, 'terminal')
   const photos = createPhotoStorage(config, fetcher)
   const publicEntry = async entry => (await photos.expose([entry]))[0]
@@ -32,9 +37,37 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     next()
   })
   app.use(express.json({ limit: '400kb' }))
-  app.get('/api/auth/config', (req, res) => res.json({ provider: 'local' }))
+  app.get('/api/maintenance/photos', async (req, res) => {
+    const secret = process.env.CRON_SECRET
+    const provided = req.headers.authorization || ''
+    const expected = secret ? `Bearer ${secret}` : ''
+    if (!secret || Buffer.byteLength(provided) !== Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(provided), Buffer.from(expected))) return res.status(401).json({ error: 'Acesso não autorizado.' })
+    const result = await prunePhotos(db, photos, { apply: true })
+    res.status(result.failed ? 503 : 200).json(result)
+  })
+  app.get('/api/auth/config', (req, res) => res.json({ provider: 'local', registration_enabled: !!config.adminRegistrationEnabled }))
+  app.post('/api/auth/signup', rateLimit(db, 'signup', 5, 60 * 60000), async (req, res) => {
+    await registrations.signup(req.body)
+    res.status(202).json({ message: 'Se o cadastro puder ser realizado, você receberá um código por e-mail. Após confirmar, aguarde a aprovação do administrador.' })
+  })
+  app.post('/api/auth/resend', rateLimit(db, 'resend-email', 3, 15 * 60000), async (req, res) => {
+    await registrations.resend(req.body?.email)
+    res.json({ message: 'Se houver uma confirmação pendente, enviaremos um novo código.' })
+  })
+  app.post('/api/auth/verify-email', rateLimit(db, 'verify-email', 10, 15 * 60000), async (req, res) => {
+    await registrations.verify(req.body?.email, req.body?.code)
+    res.json({ message: 'E-mail confirmado. Aguarde a aprovação de um administrador para entrar.' })
+  })
   app.post('/api/auth/login', rateLimit(db, 'login', 10, 15 * 60000), async (req, res) => {
     res.json(await auth.login(req.body?.username, req.body?.password))
+  })
+  app.post('/api/auth/forgot-password', rateLimit(db, 'forgot-password', 3, 15 * 60000), async (req, res) => {
+    await passwords.forgot(req.body?.email)
+    res.json({ message: 'Se houver uma conta com esse e-mail, enviaremos um código de recuperação.' })
+  })
+  app.post('/api/auth/reset-password', rateLimit(db, 'reset-password', 10, 15 * 60000), async (req, res) => {
+    await passwords.reset(req.body)
+    res.json({ message: 'Senha alterada. Entre novamente com a nova senha.' })
   })
   app.get('/api/terminal/config', (req, res) => res.json({ provider: config.terminalAuthProvider }))
   app.post('/api/terminal/login', rateLimit(db, 'terminal-login', 10, 15 * 60000), async (req, res) => {
@@ -155,6 +188,17 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     next()
   })
   app.get('/api/auth/me', async (req, res) => { const admin = await db('admins').where({ id: res.locals.session.admin_id }).first(); res.json({ username: admin.username }) })
+  app.post('/api/auth/change-password', rateLimit(db, 'change-password', 5, 15 * 60000), async (req, res) => {
+    await passwords.change(res.locals.session.admin_id, req.body)
+    res.json({ message: 'Senha alterada. Entre novamente com a nova senha.' })
+  })
+  app.get('/api/admin-registrations', async (req, res) => {
+    res.json(await db('admin_registrations').select('id', 'name', 'email', 'status', 'created_at', 'email_confirmed_at').where({ status: 'pending' }).orderBy('id'))
+  })
+  app.post('/api/admin-registrations/:id/review', async (req, res) => {
+    await registrations.review(Number(req.params.id), req.body?.action, res.locals.session.admin_id)
+    res.json({ ok: true })
+  })
   app.post('/api/auth/logout', async (req, res) => { await auth.logout(res.locals.session); res.sendStatus(204) })
   app.get('/api/employees', async (req, res) => {
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(clock())
@@ -165,7 +209,9 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     res.json(await photos.expose(employees.map(employee => ({ ...employee, monthly_month: month, monthly_minutes: monthlyScheduleMinutes(employee, month, events) }))))
   })
   app.post('/api/employees', async (req, res) => {
-    const { name, registration, department = '', job_title = '', photo = null, work_time, break_time, pin, overtime_rate = '' } = req.body || {}
+    const { name, registration, department = '', job_title = '', photo = null, work_time, break_time, pin, overtime_rate = '', hourly_rate = '' } = req.body || {}
+    const hourly_rate_cents = parseHourlyRate(hourly_rate)
+    if (hourly_rate_cents === undefined) return res.status(400).json({ error: 'Informe o valor da hora normal em reais, com até duas casas decimais.' })
     const overtime_rate_cents = parseHourlyRate(overtime_rate)
     if (overtime_rate_cents === undefined) return res.status(400).json({ error: 'Informe o valor da hora extra em reais, com até duas casas decimais.' })
     const work_minutes = parseDuration(work_time ?? '08:00')
@@ -176,7 +222,7 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     try {
       storedPhoto = await photos.put(photo, `employees/${randomBytes(16).toString('hex')}`)
       const generatedRegistration = registration?.trim() || `FUNC-${Date.now()}-${randomBytes(3).toString('hex')}`
-      const created = await db('employees').insert({ name: name.trim(), registration: generatedRegistration, department: department.trim(), job_title: job_title.trim(), photo: storedPhoto, target_hours: work_minutes / 60, work_minutes, break_minutes, workdays: JSON.stringify(workdays), overtime_rate_cents, pin_digest: await pinDigest(db, pin), created_at: new Date().toISOString() }).returning('id')
+      const created = await db('employees').insert({ name: name.trim(), registration: generatedRegistration, department: department.trim(), job_title: job_title.trim(), photo: storedPhoto, photo_updated_at: storedPhoto ? new Date().toISOString() : null, target_hours: work_minutes / 60, work_minutes, break_minutes, workdays: JSON.stringify(workdays), overtime_rate_cents, hourly_rate_cents, pin_digest: await pinDigest(db, pin), created_at: new Date().toISOString() }).returning('id')
       id = created[0].id
     } catch (error) {
       await photos.discard(storedPhoto)
@@ -345,20 +391,22 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
         if (trx.client.config.client === 'pg') query.forUpdate()
         previous = await query.first()
         if (!previous) throw new Error('Funcionário removido durante a atualização.')
-        await trx('employees').where({ id: previous.id }).update({ photo: storedPhoto })
+        await trx('employees').where({ id: previous.id }).update({ photo: storedPhoto, photo_updated_at: storedPhoto ? new Date().toISOString() : null })
       })
     } catch (error) { await photos.discard(storedPhoto); throw error }
     await photos.discard(previous.photo)
     res.sendStatus(204)
   })
   app.post('/api/employees/:id/schedule', async (req, res) => {
-    const { department = '', job_title = '', work_time, break_time, workdays, overtime_rate } = req.body || {}
+    const { department = '', job_title = '', work_time, break_time, workdays, overtime_rate, hourly_rate } = req.body || {}
+    const hourly_rate_cents = hourly_rate === undefined ? undefined : parseHourlyRate(hourly_rate)
+    if (hourly_rate !== undefined && hourly_rate_cents === undefined) return res.status(400).json({ error: 'Informe o valor da hora normal em reais, com até duas casas decimais.' })
     const overtime_rate_cents = overtime_rate === undefined ? undefined : parseHourlyRate(overtime_rate)
     if (overtime_rate !== undefined && overtime_rate_cents === undefined) return res.status(400).json({ error: 'Informe o valor da hora extra em reais, com até duas casas decimais.' })
     const work_minutes = parseDuration(work_time)
     const break_minutes = parseDuration(break_time)
     if (typeof department !== 'string' || department.length > 120 || typeof job_title !== 'string' || job_title.length > 120 || work_minutes === null || work_minutes < 1 || work_minutes > 1440 || break_minutes === null || break_minutes < 0 || break_minutes > 720 || !validWorkdays(workdays)) return res.status(400).json({ error: 'Informe função, departamento, serviço e intervalo válidos.' })
-    await db('employees').where({ id: res.locals.employeeId }).update({ department: department.trim(), job_title: job_title.trim(), target_hours: work_minutes / 60, work_minutes, break_minutes, workdays: JSON.stringify(workdays), ...(overtime_rate !== undefined ? { overtime_rate_cents } : {}) })
+    await db('employees').where({ id: res.locals.employeeId }).update({ department: department.trim(), job_title: job_title.trim(), target_hours: work_minutes / 60, work_minutes, break_minutes, workdays: JSON.stringify(workdays), ...(overtime_rate !== undefined ? { overtime_rate_cents } : {}), ...(hourly_rate !== undefined ? { hourly_rate_cents } : {}) })
     res.sendStatus(204)
   })
   app.post('/api/employees/:id/job-title', async (req, res) => {

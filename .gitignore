@@ -43,6 +43,8 @@ data/
 *.p12
 *.keystore
 *.jks
+android/keystore.properties
+release-private/
 
 # Android & Capacitor build artifacts / local configuration
 android/.gradle/

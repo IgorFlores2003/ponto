@@ -5,6 +5,10 @@ React + Vite, backend Express no mesmo projeto e PostgreSQL/Supabase ou SQLite c
 - `/#/terminal`: login de acesso ao terminal; após entrar, os funcionários marcam ponto por PIN.
 - `/#/admin`: login administrativo, cadastro de funcionários, dashboard e relatórios.
 
+Cadastro por e-mail com confirmação e aprovação, recuperação e troca de senha: [configuração de acesso](docs/auth-email.md). Fotos têm rotina de retenção de dois meses: [armazenamento e agendamento](docs/photo-retention.md). O relatório exporta `.xlsx` para Excel e Google Sheets, além de PDF e CSV.
+
+Cada funcionário pode ter tarifa normal e tarifa extra. Horas normais são as trabalhadas fora das folgas; o total em reais soma essas horas pela tarifa normal às horas em folgas pela tarifa extra. Intervalos e atestados não entram no valor trabalhado. Tarifas ausentes mantêm valores como “não informado”; tarifas atuais também recalculam relatórios antigos. A migration 018 adiciona a tarifa normal sem atribuir preços aos cadastros existentes.
+
 ## Iniciar
 
 Use Node.js 22.12+ ou 24+.
@@ -102,6 +106,18 @@ Exclusivas do administrador, com `Authorization: Bearer <token>`:
 A antiga rota de registro por ID foi removida: batidas só são aceitas pelo terminal mediante PIN. Registros não podem ser excluídos pela API.
 
 ## Seeds de desenvolvimento
+
+### Somente administrador (inclusive produção)
+
+Defina `ADMIN_SEED_USERNAME` e `ADMIN_SEED_PASSWORD` no `.env` ou no ambiente, com uma senha própria de pelo menos 10 caracteres. Execute:
+
+```bash
+npm run db:seed:admin
+```
+
+O comando aplica as migrations e cria somente o administrador no banco configurado. Pode ser repetido: preserva a senha de usuários existentes e não cria funcionários de demonstração. Em produção, exige `DATABASE_URL`. Use a mesma conexão da API publicada e remova as variáveis `ADMIN_SEED_*` após criar o acesso. As credenciais não são exibidas pelo comando. Para informar as credenciais interativamente, use `npm run admin:create`.
+
+### Dados de demonstração
 
 ```bash
 npm run db:seed

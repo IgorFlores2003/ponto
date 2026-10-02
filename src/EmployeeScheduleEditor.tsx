@@ -27,6 +27,7 @@ export default function EmployeeScheduleEditor({ employee, token, monthEvents, o
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
+    hourly_rate: employee.hourly_rate_cents == null ? '' : (employee.hourly_rate_cents / 100).toFixed(2).replace('.', ','),
     overtime_rate: employee.overtime_rate_cents == null ? '' : (employee.overtime_rate_cents / 100).toFixed(2).replace('.', ','),
     department: employee.department || '',
     job_title: employee.job_title || '',
@@ -49,6 +50,7 @@ export default function EmployeeScheduleEditor({ employee, token, monthEvents, o
     try {
       const updated: Employee = {
         ...employee,
+        hourly_rate_cents: parseHourlyRate(form.hourly_rate) ?? null,
         overtime_rate_cents: parseHourlyRate(form.overtime_rate) ?? null,
         department: form.department,
         job_title: form.job_title,
@@ -111,6 +113,11 @@ export default function EmployeeScheduleEditor({ employee, token, monthEvents, o
             onChange={e => setForm({ ...form, break_time: e.target.value })} />
         </label>
         <label className={labelClass}>
+          Valor da hora normal (R$/h)
+          <input inputMode="decimal" pattern="[0-9]{1,6}([.,][0-9]{1,2})?" placeholder="Ex.: 15,00" value={form.hourly_rate} className={inputClass}
+            onChange={e => setForm({ ...form, hourly_rate: e.target.value })} />
+        </label>
+        <label className={labelClass}>
           Valor da hora extra (R$/h)
           <input inputMode="decimal" pattern="[0-9]{1,6}([.,][0-9]{1,2})?" placeholder="Ex.: 25,50" value={form.overtime_rate} className={inputClass}
             onChange={e => setForm({ ...form, overtime_rate: e.target.value })} />
@@ -146,14 +153,16 @@ export default function EmployeeScheduleEditor({ employee, token, monthEvents, o
         <div><dt className="inline font-bold">Intervalo: </dt><dd className="inline">{hours(employee.break_minutes ?? 60)}</dd></div>
       </dl>
       <details className="my-2">
-        <summary className="min-h-12 cursor-pointer content-center font-bold">Ver horas do mês e valor da hora extra</summary>
+        <summary className="min-h-12 cursor-pointer content-center font-bold">Ver horas do mês e valores por hora</summary>
         <p>{hours(employee.monthly_minutes ?? 0)} horas previstas em {employee.monthly_month?.split('-').reverse().join('/') || 'este mês'}.</p>
         <p>Hora extra: {money(employee.overtime_rate_cents)}.</p>
+        <p>Hora normal: {money(employee.hourly_rate_cents)}.</p>
       </details>
       <button
         className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-[#e1f3e7] px-4 py-3 font-bold text-[#317455] hover:text-[#173d2f]"
         onClick={() => {
           setForm({
+            hourly_rate: employee.hourly_rate_cents == null ? '' : (employee.hourly_rate_cents / 100).toFixed(2).replace('.', ','),
             overtime_rate: employee.overtime_rate_cents == null ? '' : (employee.overtime_rate_cents / 100).toFixed(2).replace('.', ','),
             department: employee.department || '',
             job_title: employee.job_title || '',

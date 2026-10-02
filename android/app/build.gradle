@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+def releaseKeys = new Properties()
+def releaseKeysFile = rootProject.file('keystore.properties')
+if (releaseKeysFile.exists()) {
+    releaseKeysFile.withInputStream { releaseKeys.load(it) }
+}
+
 android {
     namespace = "com.pontodigital.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,21 +13,41 @@ android {
         applicationId "com.pontodigital.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.1"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (releaseKeysFile.exists()) {
+                storeFile rootProject.file(releaseKeys.getProperty('storeFile'))
+                storePassword releaseKeys.getProperty('storePassword')
+                keyAlias releaseKeys.getProperty('keyAlias')
+                keyPassword releaseKeys.getProperty('keyPassword')
+            }
+        }
+    }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 }
+
+tasks.register('verifyReleaseSigning') {
+    doLast {
+        if (!releaseKeysFile.exists() || ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].any { !releaseKeys.getProperty(it) }) {
+            throw new GradleException('Configure android/keystore.properties antes de gerar uma versão de lançamento. Veja docs/android-release.md.')
+        }
+    }
+}
+tasks.matching { it.name == 'preReleaseBuild' }.configureEach { dependsOn('verifyReleaseSigning') }
 
 repositories {
     flatDir{

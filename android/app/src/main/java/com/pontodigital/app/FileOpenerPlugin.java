@@ -53,7 +53,9 @@ public class FileOpenerPlugin extends Plugin {
             if (mimeType == null || mimeType.isEmpty()) {
                 if (file.getName().endsWith(".pdf")) {
                     mimeType = "application/pdf";
-                } else if (file.getName().endsWith(".xls") || file.getName().endsWith(".xlsx")) {
+                } else if (file.getName().endsWith(".xlsx")) {
+                    mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                } else if (file.getName().endsWith(".xls")) {
                     mimeType = "application/vnd.ms-excel";
                 } else if (file.getName().endsWith(".csv")) {
                     mimeType = "text/csv";

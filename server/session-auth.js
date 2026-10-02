@@ -41,24 +41,31 @@ export function createSessionAuth(db, config, fetcher, scope = 'admin') {
   async function login(username, password) {
     if (typeof username !== 'string' || username.length > 254 || typeof password !== 'string' || !password || password.length > 1024) throw denied()
     let account, payload
+    let sessionProvider = provider
     if (local) {
       account = await db(accounts).where({ username: username.trim().toLowerCase() }).first()
-      const valid = await verifyPassword(password, account?.password_hash || await dummyHash)
-      if (!account || !valid) throw denied()
-    } else {
+      if (account?.supabase_user_id) {
+        if (!config.adminRegistrationEnabled) throw denied()
+        sessionProvider = 'supabase'
+      } else {
+        const valid = await verifyPassword(password, account?.password_hash || await dummyHash)
+        if (!account || !valid) throw denied()
+      }
+    }
+    if (sessionProvider === 'supabase') {
       const result = await request('/auth/v1/token?grant_type=password', { method: 'POST', body: { email: username.trim().toLowerCase(), password } })
       payload = providerSession(result)
       // Only explicitly linked Auth accounts may open this company terminal.
       account = await db(accounts).where({ supabase_user_id: payload.user_id }).first()
-      if (!account || !account.active || !result.user.email_confirmed_at) { await revokeUpstream(payload); throw denied() }
+      if (!account || (accounts === 'terminal_users' && !account.active) || !result.user.email_confirmed_at) { await revokeUpstream(payload); throw denied() }
     }
     const token = randomBytes(32).toString('hex')
     const token_hash = hashToken(token)
     const expires_at = Date.now() + SESSION_DURATION
     try {
       await db(sessions).where('expires_at', '<=', Date.now()).delete()
-      await db(sessions).insert({ token_hash, [ownerField]: account.id, expires_at, ...(terminal ? { auth_provider: provider,
-        provider_session: payload ? encrypt(payload, config.encryptionKey, token_hash) : null } : {}) })
+      await db(sessions).insert({ token_hash, [ownerField]: account.id, expires_at, auth_provider: sessionProvider,
+        provider_session: payload ? encrypt(payload, config.encryptionKey, token_hash) : null })
     } catch (error) { if (payload) await revokeUpstream(payload); throw error }
     return { token, expires_at, username: account.username }
   }
@@ -70,10 +77,13 @@ export function createSessionAuth(db, config, fetcher, scope = 'admin') {
       const query = trx(sessions).where({ token_hash }).where('expires_at', '>', Date.now())
       if (trx.client.config.client === 'pg') query.forUpdate()
       const session = await query.first()
-      if (!session || (session.auth_provider || 'local') !== provider) return null
+      if (!session) return null
       const account = await trx(accounts).where({ id: session[ownerField] }).first()
-      if (!account || (!local && !account.active)) return null
-      if (local) return session
+      if (!account || (accounts === 'terminal_users' && !account.active)) return null
+      const expectedProvider = local && account.supabase_user_id ? 'supabase' : provider
+      if (session.auth_provider !== expectedProvider) return null
+      if (expectedProvider === 'local') return session
+      if (local && !config.adminRegistrationEnabled) return null
       let payload
       try { payload = decrypt(session.provider_session, config.encryptionKey, token_hash) }
       catch { await trx(sessions).where({ token_hash }).delete(); return null }

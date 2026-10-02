@@ -23,7 +23,7 @@ interface Props {
 const EMPTY_FORM = {
   name: '', registration: '', department: '', job_title: '',
   photo: null as string | null,
-  work_time: '07:20', break_time: '01:00', overtime_rate: '',
+  work_time: '07:20', break_time: '01:00', overtime_rate: '', hourly_rate: '',
   workdays: [1, 2, 3, 4, 5] as number[], pin: '',
 }
 
@@ -191,6 +191,11 @@ export default function EmployeeList({
                 Quanto tempo tem de intervalo?
                 <input required type="time" step="60" value={form.break_time} className={INPUT_CLASS}
                   onChange={e => setForm({ ...form, break_time: e.target.value })} />
+              </label>
+              <label className={LABEL_CLASS}>
+                Valor da hora normal (R$/h, opcional)
+                <input inputMode="decimal" pattern="[0-9]{1,6}([.,][0-9]{1,2})?" placeholder="Ex.: 15,00" value={form.hourly_rate}
+                  className={INPUT_CLASS} onChange={e => setForm({ ...form, hourly_rate: e.target.value })} />
               </label>
               <label className={LABEL_CLASS}>
                 Valor de uma hora extra (opcional)

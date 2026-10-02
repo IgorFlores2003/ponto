@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { FiLogIn, FiSmartphone } from 'react-icons/fi'
 import PasswordInput from './PasswordInput'
+import AdminSignup from './AdminSignup'
+import PasswordRecovery from './PasswordRecovery'
 import { api, ApiError, errorMessage, INPUT_CLASS, LABEL_CLASS } from './types'
 
 interface Props {
-  onLogin: (token: string) => void
+  onLogin: (token: string, credentials: { username: string; password: string; remember: boolean }) => void
 }
 
 const REMEMBER_DURATION = 8 * 60 * 60 * 1000 // 8 horas
@@ -25,6 +27,8 @@ export { loadSavedToken }
 
 /** Tela de login do administrador. */
 export default function AdminLogin({ onLogin }: Props) {
+  const [signup, setSignup] = useState(false)
+  const [recover, setRecover] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
@@ -44,7 +48,7 @@ export default function AdminLogin({ onLogin }: Props) {
         localStorage.removeItem('admin_token')
         localStorage.removeItem('admin_token_expires')
       }
-      onLogin(result.token)
+      onLogin(result.token, { username, password, remember: rememberMe })
       setPassword('')
     } catch (err) {
       setError(errorMessage(err))
@@ -58,21 +62,23 @@ export default function AdminLogin({ onLogin }: Props) {
     }
   }
 
+  if (signup) return <AdminSignup onBack={() => setSignup(false)} />
+  if (recover) return <PasswordRecovery onBack={() => setRecover(false)} />
   return (
     <section className="py-2">
       <span className="mb-1 block text-[10px] font-bold tracking-[0.14em] text-[#789185]">
         ACESSO RESTRITO
       </span>
       <h2 className="font-['Manrope',sans-serif] text-xl font-bold tracking-tight text-[#143f31]">
-        Entrar como administrador
+        Entrar na empresa
       </h2>
       <p className="mt-1 mb-6 text-xs text-[#82958b]">
-        Gerencie funcionários e acompanhe as horas da equipe.
+        Acesse o terminal ou a área administrativa da empresa.
       </p>
 
       <form className="mb-5 grid gap-3.5" onSubmit={login}>
         <label className={LABEL_CLASS}>
-          Usuário
+          Usuário ou e-mail
           <input
             required
             type="text"
@@ -121,6 +127,11 @@ export default function AdminLogin({ onLogin }: Props) {
           {error}
         </p>
       )}
+
+      <button type="button" disabled={busy} onClick={() => { setPassword(''); setError(''); setSignup(true) }} className="mb-4 min-h-12 w-full rounded-xl border border-[#9fbaa9] px-4 text-sm font-bold text-[#317455]">
+        Criar login
+      </button>
+      <button type="button" disabled={busy} onClick={() => { setPassword(''); setError(''); setRecover(true) }} className="mb-4 min-h-12 w-full text-sm font-bold text-[#317455]">Esqueci minha senha</button>
 
       <a href="#/terminal" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#317455] hover:text-[#173d2f]">
         <FiSmartphone size={14} aria-hidden="true" />
