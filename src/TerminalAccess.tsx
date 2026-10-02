@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { FiLogIn, FiLogOut, FiLock } from 'react-icons/fi'
 import Terminal from './Terminal'
 import PasswordInput from './PasswordInput'
+import ConfirmDialog from './ConfirmDialog'
 import { api, ApiError, errorMessage, INPUT_CLASS, LABEL_CLASS } from './types'
 
 type Session = { token: string; expires_at: number }
@@ -39,6 +40,7 @@ export default function TerminalAccess({ onAdmin }: Props) {
   const [checking, setChecking] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [confirmLogout, setConfirmLogout] = useState(false)
 
   function exit(message = '') {
     clearSavedSession(); setSession(null); setPassword(''); setError(message)
@@ -90,11 +92,12 @@ export default function TerminalAccess({ onAdmin }: Props) {
   const retry = () => { setError(''); setAttempt(value => value + 1) }
 
   if (session) return <>
+    {confirmLogout && <ConfirmDialog title="Sair do terminal?" message="Este aparelho voltará para a tela de login do sistema." confirmLabel="Sair do terminal" danger busy={busy} onConfirm={() => void logout()} onCancel={() => setConfirmLogout(false)} />}
     <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
       <span className="text-sm font-bold text-[#315847]">{checking ? 'Verificando acesso…' : 'Terminal liberado'}</span>
       <div className="flex flex-wrap gap-2">
         {onAdmin && <button type="button" onClick={onAdmin} className="min-h-12 rounded-xl border border-[#9fbaa9] px-3 text-sm font-bold text-[#315847]">Acessar administrativo</button>}
-        <button type="button" disabled={busy} onClick={() => void logout()} className="flex min-h-12 items-center gap-2 rounded-xl border border-[#9fbaa9] px-3 text-sm font-bold text-[#315847] disabled:opacity-55"><FiLogOut aria-hidden="true" /> Sair</button>
+        <button type="button" disabled={busy} onClick={() => setConfirmLogout(true)} className="flex min-h-12 items-center gap-2 rounded-xl border border-[#9fbaa9] px-3 text-sm font-bold text-[#315847] disabled:opacity-55"><FiLogOut aria-hidden="true" /> Sair</button>
       </div>
     </div>
     {error && <p role="alert" className="my-3 rounded-xl bg-[#fff0f0] p-3 text-base text-[#913939]">{error}</p>}

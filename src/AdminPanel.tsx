@@ -10,6 +10,7 @@ import SuccessToast from './SuccessToast'
 import EmployeeList from './EmployeeList'
 import ReportTab from './ReportTab'
 import DownloadToast, { type DownloadNotice } from './DownloadToast'
+import ConfirmDialog from './ConfirmDialog'
 import { api, ApiError, errorMessage, day, monthStart, INPUT_CLASS, LABEL_CLASS, type Employee, type Entry, type Report } from './types'
 import { monthlyScheduleMinutes, type ScheduleEvent } from '../shared/schedule.js'
 
@@ -48,6 +49,7 @@ export default function AdminPanel({ token, onExit, onLogout, onUnauthorized, no
   const [notice, setNotice] = useState('')
   const [version, setVersion] = useState(0)
   const [downloadNotice, setDownloadNotice] = useState<DownloadNotice | null>(null)
+  const [confirmLogout, setConfirmLogout] = useState(false)
   const sequence = useRef(0)
 
   const reportFrom = tab === 'relatorios' ? from : dashboardFilters.from
@@ -162,6 +164,7 @@ export default function AdminPanel({ token, onExit, onLogout, onUnauthorized, no
 
   return (
     <>
+      {confirmLogout && <ConfirmDialog title="Sair da conta?" message="Sua sessão administrativa e a sessão do terminal serão encerradas neste aparelho." confirmLabel="Sair da conta" danger busy={busy} onConfirm={() => void logout()} onCancel={() => setConfirmLogout(false)} />}
       {downloadNotice && <DownloadToast notice={downloadNotice} onClose={() => setDownloadNotice(null)} />}
       {notificationTarget && createPortal(
         <EntryNotifications token={token} version={version} onUnauthorized={onUnauthorized} onEntryUpdated={entryUpdated} />,
@@ -176,7 +179,7 @@ export default function AdminPanel({ token, onExit, onLogout, onUnauthorized, no
         <div className="flex items-center gap-3">
           <button type="button" disabled={busy}
             className="flex items-center gap-1 bg-transparent text-xs font-bold text-[#317455] hover:text-[#173d2f] disabled:opacity-55"
-            onClick={logout}>
+            onClick={() => setConfirmLogout(true)}>
             <FiLogOut size={14} aria-hidden="true" /> Sair da conta
           </button>
         </div>
