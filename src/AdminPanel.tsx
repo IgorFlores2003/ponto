@@ -21,11 +21,12 @@ type Tab = 'dashboard' | 'calendario' | 'funcionarios' | 'relatorios'
 interface Props {
   token: string
   onExit: () => void
+  onUnauthorized: () => void
   notificationTarget: HTMLDivElement | null
 }
 
 /** Painel administrativo completo: busca dados, gerencia abas e delega a subcomponentes. */
-export default function AdminPanel({ token, onExit, notificationTarget }: Props) {
+export default function AdminPanel({ token, onExit, onUnauthorized, notificationTarget }: Props) {
   const [tab, setTab] = useState<Tab>('dashboard')
   const [employees, setEmployees] = useState<Employee[]>([])
   const [monthEvents, setMonthEvents] = useState<ScheduleEvent[]>([])
@@ -52,7 +53,7 @@ export default function AdminPanel({ token, onExit, notificationTarget }: Props)
   const reportTo = tab === 'relatorios' ? to : dashboardFilters.to
 
   function fail(err: unknown) {
-    if (err instanceof ApiError && err.status === 401) onExit()
+    if (err instanceof ApiError && err.status === 401) onUnauthorized()
     else setError(errorMessage(err))
   }
 
@@ -162,15 +163,15 @@ export default function AdminPanel({ token, onExit, notificationTarget }: Props)
     <>
       {downloadNotice && <DownloadToast notice={downloadNotice} onClose={() => setDownloadNotice(null)} />}
       {notificationTarget && createPortal(
-        <EntryNotifications token={token} version={version} onUnauthorized={onExit} onEntryUpdated={entryUpdated} />,
+        <EntryNotifications token={token} version={version} onUnauthorized={onUnauthorized} onEntryUpdated={entryUpdated} />,
         notificationTarget,
       )}
 
       {/* Barra superior */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <a href="#/terminal" className="flex items-center gap-1.5 text-xs font-bold text-[#317455] hover:text-[#173d2f]">
+        <button type="button" onClick={onExit} className="flex items-center gap-1.5 text-xs font-bold text-[#317455] hover:text-[#173d2f]">
           <FiSmartphone size={16} aria-hidden="true" /> Terminal de ponto
-        </a>
+        </button>
         <div className="flex items-center gap-3">
           <button type="button" disabled={busy}
             className="flex items-center gap-1 bg-transparent text-xs font-bold text-[#317455] hover:text-[#173d2f] disabled:opacity-55"

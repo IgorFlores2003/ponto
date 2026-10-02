@@ -22,7 +22,7 @@ function AccessFlow({ notificationTarget, onView }: { notificationTarget: HTMLDi
 
   useEffect(() => { onView(view) }, [view, onView])
 
-  if (view === 'admin' && token) return <AdminPanel token={token} onExit={() => { setView('terminal'); onView('terminal') }} notificationTarget={notificationTarget} />
+  if (view === 'admin' && token) return <AdminPanel token={token} onExit={() => { setView('terminal'); onView('terminal') }} onUnauthorized={exitAdmin} notificationTarget={notificationTarget} />
   if (view === 'terminal' && token) return <TerminalAccess credentials={credentials} onCredentialsConsumed={() => setCredentials(null)} onAdmin={() => { setView('admin'); onView('admin') }} />
   return <AdminLogin onLogin={(newToken, authCredentials) => { setToken(newToken); setCredentials(authCredentials); setView('terminal'); onView('terminal') }} />
 }
