@@ -2,35 +2,38 @@ import { useCallback, useEffect, useState } from 'react'
 import ErrorBoundary from './ErrorBoundary'
 import AdminLogin, { loadSavedToken } from './AdminLogin'
 import AdminPanel from './AdminPanel'
-import TerminalAccess from './TerminalAccess'
+import TerminalAccess, { logoutTerminalSession } from './TerminalAccess'
 
-type View = 'login' | 'terminal' | 'admin'
+type View = 'terminal' | 'admin-login' | 'admin'
 
 function AccessFlow({ notificationTarget, onView }: { notificationTarget: HTMLDivElement | null; onView: (view: View) => void }) {
-  const [token, setToken] = useState<string | null>(loadSavedToken)
-  const [credentials, setCredentials] = useState<{ username: string; password: string; remember: boolean } | null>(null)
-  const [view, setView] = useState<View>(() => loadSavedToken() ? 'terminal' : 'login')
+  const [adminToken, setAdminToken] = useState<string | null>(loadSavedToken)
+  const [view, setView] = useState<View>('terminal')
 
-  function exitAdmin() {
+  function clearAdminToken() {
     localStorage.removeItem('admin_token')
     localStorage.removeItem('admin_token_expires')
-    setToken(null)
-    setCredentials(null)
-    setView('login')
-    onView('login')
+    setAdminToken(null)
+  }
+
+  async function logoutAccount() {
+    clearAdminToken()
+    await logoutTerminalSession()
+    setView('terminal')
+    onView('terminal')
   }
 
   useEffect(() => { onView(view) }, [view, onView])
 
-  if (view === 'admin' && token) return <AdminPanel token={token} onExit={() => { setView('terminal'); onView('terminal') }} onUnauthorized={exitAdmin} notificationTarget={notificationTarget} />
-  if (view === 'terminal' && token) return <TerminalAccess credentials={credentials} onCredentialsConsumed={() => setCredentials(null)} onAdmin={() => { setView('admin'); onView('admin') }} />
-  return <AdminLogin onLogin={(newToken, authCredentials) => { setToken(newToken); setCredentials(authCredentials); setView('terminal'); onView('terminal') }} />
+  if (view === 'admin' && adminToken) return <AdminPanel token={adminToken} onExit={() => setView('terminal')} onLogout={() => void logoutAccount()} onUnauthorized={() => { clearAdminToken(); setView('admin-login') }} notificationTarget={notificationTarget} />
+  if (view === 'admin-login') return <AdminLogin onBack={() => setView('terminal')} onLogin={newToken => { setAdminToken(newToken); setView('admin') }} />
+  return <TerminalAccess onAdmin={() => setView(adminToken ? 'admin' : 'admin-login')} />
 }
 
 // ─── Shell principal: roteamento por hash ─────────────────────────────────────
 
 export default function App() {
-  const [view, setView] = useState<View>('login')
+  const [view, setView] = useState<View>('terminal')
   const [notificationTarget, setNotificationTarget] = useState<HTMLDivElement | null>(null)
   const setCurrentView = useCallback((next: View) => setView(next), [])
 
@@ -43,7 +46,7 @@ export default function App() {
             <span className="mb-1 block text-[10px] font-bold tracking-[0.14em] text-[#789185]">PONTO DIGITAL</span>
             <div className="flex items-center gap-3">
               <h1 className="min-w-0 font-['Manrope',sans-serif] text-lg font-extrabold text-[#143f31]">
-                {view === 'admin' ? 'Área administrativa' : view === 'login' ? 'Acesso à empresa' : 'Terminal de ponto'}
+                {view === 'admin' ? 'Área administrativa' : view === 'admin-login' ? 'Login administrativo' : 'Terminal de ponto'}
               </h1>
               {view === 'admin' && <div ref={setNotificationTarget} className="shrink-0" />}
             </div>

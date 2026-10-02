@@ -21,12 +21,13 @@ type Tab = 'dashboard' | 'calendario' | 'funcionarios' | 'relatorios'
 interface Props {
   token: string
   onExit: () => void
+  onLogout: () => void
   onUnauthorized: () => void
   notificationTarget: HTMLDivElement | null
 }
 
 /** Painel administrativo completo: busca dados, gerencia abas e delega a subcomponentes. */
-export default function AdminPanel({ token, onExit, onUnauthorized, notificationTarget }: Props) {
+export default function AdminPanel({ token, onExit, onLogout, onUnauthorized, notificationTarget }: Props) {
   const [tab, setTab] = useState<Tab>('dashboard')
   const [employees, setEmployees] = useState<Employee[]>([])
   const [monthEvents, setMonthEvents] = useState<ScheduleEvent[]>([])
@@ -145,7 +146,7 @@ export default function AdminPanel({ token, onExit, onUnauthorized, notification
 
   async function logout() {
     setBusy(true)
-    try { await api('/auth/logout', {}, token) } catch (err) { fail(err) } finally { setBusy(false); onExit() }
+    try { await api('/auth/logout', {}, token) } catch (err) { fail(err) } finally { setBusy(false); onLogout() }
   }
 
   function goToHistory(id: number) {

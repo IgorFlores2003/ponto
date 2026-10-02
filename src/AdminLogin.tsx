@@ -6,7 +6,8 @@ import PasswordRecovery from './PasswordRecovery'
 import { api, ApiError, errorMessage, INPUT_CLASS, LABEL_CLASS } from './types'
 
 interface Props {
-  onLogin: (token: string, credentials: { username: string; password: string; remember: boolean }) => void
+  onLogin: (token: string) => void
+  onBack: () => void
 }
 
 const REMEMBER_DURATION = 8 * 60 * 60 * 1000 // 8 horas
@@ -26,7 +27,7 @@ function loadSavedToken(): string | null {
 export { loadSavedToken }
 
 /** Tela de login do administrador. */
-export default function AdminLogin({ onLogin }: Props) {
+export default function AdminLogin({ onLogin, onBack }: Props) {
   const [signup, setSignup] = useState(false)
   const [recover, setRecover] = useState(false)
   const [username, setUsername] = useState('')
@@ -48,7 +49,7 @@ export default function AdminLogin({ onLogin }: Props) {
         localStorage.removeItem('admin_token')
         localStorage.removeItem('admin_token_expires')
       }
-      onLogin(result.token, { username, password, remember: rememberMe })
+      onLogin(result.token)
       setPassword('')
     } catch (err) {
       setError(errorMessage(err))
@@ -70,10 +71,10 @@ export default function AdminLogin({ onLogin }: Props) {
         ACESSO RESTRITO
       </span>
       <h2 className="font-['Manrope',sans-serif] text-xl font-bold tracking-tight text-[#143f31]">
-        Entrar na empresa
+        Entrar como administrador
       </h2>
       <p className="mt-1 mb-6 text-xs text-[#82958b]">
-        Acesse o terminal ou a área administrativa da empresa.
+        Use seu login administrativo aprovado para acessar os dados da empresa.
       </p>
 
       <form className="mb-5 grid gap-3.5" onSubmit={login}>
@@ -133,6 +134,7 @@ export default function AdminLogin({ onLogin }: Props) {
         <span aria-hidden="true" className="text-[#a2b5aa]">·</span>
         <button type="button" disabled={busy} onClick={() => { setPassword(''); setError(''); setSignup(true) }} className="min-h-8 px-1 font-medium text-[#527566] underline-offset-2 hover:text-[#173d2f] hover:underline">Criar conta</button>
       </div>
+      <button type="button" disabled={busy} onClick={onBack} className="mt-2 min-h-8 w-full text-xs font-medium text-[#82958b] hover:text-[#173d2f]">Voltar ao terminal de ponto</button>
     </section>
   )
 }

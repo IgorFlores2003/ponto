@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FiLogIn, FiLogOut, FiLock } from 'react-icons/fi'
 import Terminal from './Terminal'
 import PasswordInput from './PasswordInput'
@@ -10,6 +10,15 @@ function clearSavedSession() {
   localStorage.removeItem(STORAGE_KEY)
   sessionStorage.removeItem(STORAGE_KEY)
 }
+export async function logoutTerminalSession() {
+  let session: Session | null = null
+  try {
+    session = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || localStorage.getItem(STORAGE_KEY) || 'null')
+  } catch { /* Invalid stored sessions are still removed below. */ }
+  try { if (session?.token) await api('/terminal/logout', {}, session.token) }
+  catch { /* Clear local credentials even if the server cannot be reached. */ }
+  finally { clearSavedSession() }
+}
 function loadSession(): Session | null {
   try {
     const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || localStorage.getItem(STORAGE_KEY) || 'null')
@@ -19,8 +28,8 @@ function loadSession(): Session | null {
   return null
 }
 
-type Props = { credentials?: { username: string; password: string; remember?: boolean } | null; onCredentialsConsumed?: () => void; onAdmin?: () => void }
-export default function TerminalAccess({ credentials = null, onCredentialsConsumed, onAdmin }: Props) {
+type Props = { onAdmin?: () => void }
+export default function TerminalAccess({ onAdmin }: Props) {
   const [session, setSession] = useState<Session | null>(loadSession)
   const [provider, setProvider] = useState<'local' | 'supabase' | null>(null)
   const [attempt, setAttempt] = useState(0)
@@ -30,7 +39,6 @@ export default function TerminalAccess({ credentials = null, onCredentialsConsum
   const [checking, setChecking] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const autoLoginStarted = useRef(false)
 
   function exit(message = '') {
     clearSavedSession(); setSession(null); setPassword(''); setError(message)
@@ -57,12 +65,12 @@ export default function TerminalAccess({ credentials = null, onCredentialsConsum
     return () => { active = false; clearTimeout(timeout) }
   }, [session, attempt])
 
-  async function loginWith(usernameValue: string, passwordValue: string, rememberSession = remember) {
+  async function loginWith(usernameValue: string, passwordValue: string) {
     setBusy(true); setError('')
     try {
       const result = await api<Session>('/terminal/login', { username: usernameValue, password: passwordValue })
       clearSavedSession()
-      const storage = rememberSession ? localStorage : sessionStorage
+      const storage = remember ? localStorage : sessionStorage
       storage.setItem(STORAGE_KEY, JSON.stringify({ token: result.token, expires_at: result.expires_at }))
       setSession(result); setPassword('')
     } catch (err) { setError(errorMessage(err)); setPassword('') }
@@ -72,11 +80,6 @@ export default function TerminalAccess({ credentials = null, onCredentialsConsum
     event.preventDefault()
     await loginWith(username, password)
   }
-  useEffect(() => {
-    if (!credentials || !provider || session || autoLoginStarted.current) return
-    autoLoginStarted.current = true
-    void loginWith(credentials.username, credentials.password, credentials.remember).finally(() => onCredentialsConsumed?.())
-  }, [credentials, provider, session])
   async function logout() {
     if (!session) return
     setBusy(true)
@@ -90,7 +93,7 @@ export default function TerminalAccess({ credentials = null, onCredentialsConsum
     <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
       <span className="text-sm font-bold text-[#315847]">{checking ? 'Verificando acesso…' : 'Terminal liberado'}</span>
       <div className="flex flex-wrap gap-2">
-        {onAdmin && <button type="button" onClick={onAdmin} className="min-h-12 rounded-xl border border-[#9fbaa9] px-3 text-sm font-bold text-[#315847]">Área administrativa</button>}
+        {onAdmin && <button type="button" onClick={onAdmin} className="min-h-12 rounded-xl border border-[#9fbaa9] px-3 text-sm font-bold text-[#315847]">Acessar administrativo</button>}
         <button type="button" disabled={busy} onClick={() => void logout()} className="flex min-h-12 items-center gap-2 rounded-xl border border-[#9fbaa9] px-3 text-sm font-bold text-[#315847] disabled:opacity-55"><FiLogOut aria-hidden="true" /> Sair</button>
       </div>
     </div>
@@ -119,5 +122,6 @@ export default function TerminalAccess({ credentials = null, onCredentialsConsum
     </form>
     {error && <p role="alert" className="mt-4 rounded-xl bg-[#fff0f0] p-3 text-base text-[#913939]">{error}</p>}
     {!provider && error && <button type="button" onClick={retry} className="mt-3 min-h-12 rounded-xl border border-[#9fbaa9] px-4 font-bold text-[#315847]">Tentar novamente</button>}
+    {onAdmin && <button type="button" onClick={onAdmin} className="mt-3 flex min-h-12 w-full items-center justify-center text-sm font-semibold text-[#527566]">Acessar administrativo</button>}
   </section>
 }

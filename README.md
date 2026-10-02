@@ -1,9 +1,8 @@
 # Ponto Digital
 
-React + Vite, backend Express no mesmo projeto e PostgreSQL/Supabase ou SQLite com Knex. Duas interfaces independentes compartilham a API:
+React + Vite, backend Express no mesmo projeto e PostgreSQL/Supabase ou SQLite com Knex. O acesso geral autentica o terminal; o botão **Acessar administrativo** abre um login separado para o painel.
 
-- `/#/terminal`: login de acesso ao terminal; após entrar, os funcionários marcam ponto por PIN.
-- `/#/admin`: login administrativo, cadastro de funcionários, dashboard e relatórios.
+No terminal, os funcionários marcam ponto por PIN. O painel administrativo exige uma sessão administrativa própria.
 
 Cadastro por e-mail com confirmação e aprovação, recuperação e troca de senha: [configuração de acesso](docs/auth-email.md). Fotos têm rotina de retenção de dois meses: [armazenamento e agendamento](docs/photo-retention.md). O relatório exporta `.xlsx` para Excel e Google Sheets, além de PDF e CSV.
 
@@ -21,11 +20,11 @@ npm run dev
 
 `admin:create` solicita usuário e senha (mínimo 10 caracteres, sem exibir a senha no terminal). O comando não usa senha padrão. Para dados de demonstração, veja a seção de seeds. Execute o comando com o mesmo `DATABASE_PATH` usado pelo backend. É possível criar outros administradores pelo mesmo comando.
 
-Abra a URL do Vite e acrescente `/#/admin` para entrar. Cadastre os funcionários e seus PINs exclusivos. Por exemplo: Igor com `1234` e Yasmim com `2344` (esses exemplos podem ser criados com `npm run db:seed`).
+Abra a URL do Vite para acessar o terminal. Use **Acessar administrativo** para abrir o login do painel e cadastrar funcionários e PINs exclusivos. Por exemplo: Igor com `1234` e Yasmim com `2344` (esses exemplos podem ser criados com `npm run db:seed`).
 
 ## Funcionário
 
-Abra `/#/terminal` no aparelho compartilhado e faça o login para liberar o terminal. No modo local, use o usuário e a senha administrativos existentes; com Supabase Auth configurado, use a conta vinculada ao terminal. Esse acesso não libera o painel administrativo. Depois digite o PIN e clique em **Marcar ponto**. O backend identifica o funcionário pelo PIN, define o horário e registra a batida. O campo é apagado após cada tentativa; não há sessão de funcionário. A confirmação desaparece após 6 segundos.
+Abra o app no aparelho compartilhado e entre com a conta geral autorizada para liberar o terminal. Esse login não libera o painel administrativo; use **Acessar administrativo** e autentique-se separadamente. Depois digite o PIN do funcionário e clique em **Marcar ponto**. O backend identifica o funcionário pelo PIN, define o horário e registra a batida. O campo é apagado após cada tentativa; não há sessão de funcionário. A confirmação desaparece após 6 segundos.
 
 No modo automático:
 
