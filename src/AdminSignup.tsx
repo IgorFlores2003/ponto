@@ -40,6 +40,8 @@ export default function AdminSignup({ onBack }: { onBack: () => void }) {
       : step === 'sent' ? `Enviamos um código de confirmação para ${email}. Abra sua caixa de entrada (e confira o spam) e depois avance para informar o código.`
         : step === 'verify' ? `Informe o código enviado para ${email}. Confira também a pasta de spam.`
         : 'Seu cadastro não libera acesso aos dados da empresa até ser aprovado. Depois da aprovação, entre usando seu e-mail e senha.'}</p>
+    {message && <p role="status" className="rounded-xl bg-[#eaf5ee] p-3 text-sm text-[#234c37]">{message}</p>}
+    {error && <p role="alert" aria-live="assertive" className="rounded-xl border border-[#edc6c6] bg-[#fff0f0] p-3 text-sm font-semibold text-[#913939]">{error}</p>}
     {(step === 'signup' || step === 'verify') && <form onSubmit={submit}>
       <fieldset disabled={busy} className="grid gap-4">
         {step === 'signup' && <label className={LABEL_CLASS}>Nome
@@ -65,8 +67,6 @@ export default function AdminSignup({ onBack }: { onBack: () => void }) {
       <button type="button" disabled={busy} onClick={() => { setMessage(''); setStep('verify') }} className={buttonClass}>Avançar para informar o código</button>
       <button type="button" disabled={busy} onClick={() => void resend()} className="min-h-10 text-sm font-semibold text-[#317455]">Reenviar código</button>
     </div>}
-    {message && <p role="status" className="rounded-xl bg-[#eaf5ee] p-3 text-sm text-[#234c37]">{message}</p>}
-    {error && <p role="alert" className="rounded-xl bg-[#fff0f0] p-3 text-sm text-[#913939]">{error}</p>}
     {step === 'verify' && <button type="button" disabled={busy} onClick={() => void resend()} className="min-h-10 text-sm font-semibold text-[#317455]">Reenviar código</button>}
     <button type="button" disabled={busy} onClick={onBack} className="min-h-12 text-sm font-semibold text-[#317455]">Voltar para entrar</button>
   </section>
