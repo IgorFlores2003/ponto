@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import PasswordInput from './PasswordInput'
+import OneTimeCodeInput from './OneTimeCodeInput'
 import { api, errorMessage, INPUT_CLASS, LABEL_CLASS } from './types'
 
 export default function AdminSignup({ onBack }: { onBack: () => void }) {
@@ -55,7 +56,7 @@ export default function AdminSignup({ onBack }: { onBack: () => void }) {
             <PasswordInput required minLength={10} maxLength={1024} autoComplete="new-password" value={confirmation} onChange={e => setConfirmation(e.target.value)} className={INPUT_CLASS} />
           </label>
         </> : <label className={LABEL_CLASS}>Código de confirmação
-          <input required inputMode="numeric" pattern="[0-9]{6,10}" maxLength={10} autoComplete="one-time-code" value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} className={INPUT_CLASS} />
+          <OneTimeCodeInput value={code} onChange={setCode} />
         </label>}
         <button type="submit" className={buttonClass}>{busy ? 'Aguarde…' : step === 'signup' ? 'Cadastrar' : 'Confirmar e-mail'}</button>
       </fieldset>

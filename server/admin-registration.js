@@ -4,6 +4,7 @@ import { supabaseClient, SupabaseError } from './supabase.js'
 
 const normalizeEmail = value => typeof value === 'string' ? value.trim().toLowerCase() : ''
 const validEmail = value => value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+const duplicateEmail = () => new SupabaseError('Este e-mail já está cadastrado. Entre com essa conta ou use outro e-mail.', 409)
 export function createAdminRegistration(db, config, fetcher) {
   const request = supabaseClient(config, fetcher)
   function enabled() {
@@ -24,14 +25,17 @@ export function createAdminRegistration(db, config, fetcher) {
     // Fail closed if the project's email confirmation requirement is disabled.
     const settings = await request('/auth/v1/settings')
     if (settings.mailer_autoconfirm !== false) throw new SupabaseError('A confirmação de e-mail precisa ser configurada pelo administrador.')
-    const existing = await db('admin_registrations').where({ email }).first()
-    if (existing) return
-    if (await db('admins').where({ username: email }).first()) return
+    const [registration, admin] = await Promise.all([
+      db('admin_registrations').whereRaw('lower(trim(email)) = ?', [email]).first(),
+      db('admins').whereRaw('lower(trim(username)) = ?', [email]).first(),
+    ])
+    if (registration || admin) throw duplicateEmail()
     const result = await request('/auth/v1/signup', { method: 'POST', body: { email, password } })
     await closeProviderSession(result)
     const user = result.user || result
-    // Supabase may return a fake user for an existing confirmed email.
-    if (!user.id || (Array.isArray(user.identities) && user.identities.length === 0)) return
+    // Supabase may return a fake user for an existing email to avoid account enumeration.
+    if (Array.isArray(user.identities) && user.identities.length === 0) throw duplicateEmail()
+    if (!user.id) throw new SupabaseError('Não foi possível concluir o cadastro. Tente novamente.', 502)
     // Persist the identity verified by Auth; never trust user metadata for permissions.
     await db('admin_registrations').insert({ email, name: name.trim(), supabase_user_id: user.id, created_at: new Date().toISOString() }).onConflict('email').ignore()
   }

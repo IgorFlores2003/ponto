@@ -23,14 +23,21 @@ try {
       mailer_templates_confirmation_content: '<h2>Confirme seu e-mail</h2><p>Digite este código no Ponto Digital:</p><p style="font-size:28px;font-weight:bold">{{ .Token }}</p><p>Após confirmar, aguarde a aprovação de um administrador da empresa. Se você não solicitou o cadastro, ignore esta mensagem.</p>',
       smtp_admin_email: process.env.SMTP_FROM,
       smtp_host: process.env.SMTP_HOST,
-      smtp_port: port,
+      // The Management API schema expects smtp_port as a string.
+      smtp_port: String(port),
       smtp_user: process.env.SMTP_USER,
       smtp_pass: process.env.SMTP_PASSWORD,
       smtp_sender_name: process.env.SMTP_SENDER_NAME || 'Ponto Digital',
     }),
     signal: AbortSignal.timeout(20000), redirect: 'error',
   })
-  if (!response.ok) throw new Error(`Supabase recusou a configuração SMTP (HTTP ${response.status}).`)
+  if (!response.ok) {
+    const details = await response.text()
+    const safeDetails = [process.env.SUPABASE_ACCESS_TOKEN, process.env.SMTP_PASSWORD, process.env.SMTP_USER]
+      .filter(Boolean)
+      .reduce((text, secret) => text.split(secret).join('[oculto]'), details)
+    throw new Error(`Supabase recusou a configuração SMTP (HTTP ${response.status}): ${safeDetails.slice(0, 1000)}`)
+  }
   const check = await fetch(endpoint, { headers, signal: AbortSignal.timeout(20000), redirect: 'error' })
   if (!check.ok) throw new Error(`Configuração enviada, mas a verificação falhou (HTTP ${check.status}).`)
   const config = await check.json()
