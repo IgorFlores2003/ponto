@@ -1,4 +1,5 @@
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual, createHash, createHmac } from 'node:crypto'
+import { clientIp } from './security.js'
 import { promisify } from 'node:util'
 const scrypt = promisify(scryptCallback)
 export const hashToken = token => createHash('sha256').update(token).digest('hex')
@@ -22,7 +23,7 @@ export async function createAdmin(db, username, password) {
 export function rateLimit(db, scope, max, period) {
   return async (req, res, next) => {
     const now = Date.now()
-    const key = `${scope}:${req.ip}`
+    const key = `${scope}:${clientIp(req)}`
     const allowed = await db.transaction(async trx => {
       if (trx.client.config.client === 'pg') await trx.raw('select pg_advisory_xact_lock(hashtext(?))', [key])
       await trx('attempts').where('expires_at', '<=', now).delete()

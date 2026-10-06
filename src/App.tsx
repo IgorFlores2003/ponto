@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import ErrorBoundary from './ErrorBoundary'
-import AdminLogin, { loadSavedToken } from './AdminLogin'
+import { loadSavedToken } from './AdminLogin'
+import AdminSignup from './AdminSignup'
+import PasswordRecovery from './PasswordRecovery'
 import AdminPanel from './AdminPanel'
 import TerminalAccess, { logoutTerminalSession } from './TerminalAccess'
 
@@ -8,9 +10,11 @@ type View = 'terminal' | 'admin-login' | 'admin-signup' | 'admin-recovery' | 'ad
 
 function AccessFlow({ notificationTarget, onView }: { notificationTarget: HTMLDivElement | null; onView: (view: View) => void }) {
   const [adminToken, setAdminToken] = useState<string | null>(loadSavedToken)
-  const [view, setView] = useState<View>('terminal')
+  const [view, setView] = useState<View>(() => loadSavedToken() ? 'admin' : 'terminal')
 
   function clearAdminToken() {
+    sessionStorage.removeItem('admin_token')
+    sessionStorage.removeItem('admin_token_expires')
     localStorage.removeItem('admin_token')
     localStorage.removeItem('admin_token_expires')
     setAdminToken(null)
@@ -25,12 +29,13 @@ function AccessFlow({ notificationTarget, onView }: { notificationTarget: HTMLDi
 
   useEffect(() => { onView(view) }, [view, onView])
 
-  if (view === 'admin' && adminToken) return <AdminPanel token={adminToken} onExit={() => setView('terminal')} onLogout={() => void logoutAccount()} onUnauthorized={() => { clearAdminToken(); setView('admin-login') }} notificationTarget={notificationTarget} />
-  if (view === 'admin-login' || view === 'admin-signup' || view === 'admin-recovery') return <AdminLogin key={view} initialMode={view === 'admin-signup' ? 'signup' : view === 'admin-recovery' ? 'recover' : 'login'} onBack={() => setView('terminal')} onLogin={newToken => { setAdminToken(newToken); setView('admin') }} />
-  return <TerminalAccess onAdmin={() => setView(adminToken ? 'admin' : 'admin-login')} onCreateAccount={() => setView('admin-signup')} onForgotPassword={() => setView('admin-recovery')} />
+  if (view === 'admin' && adminToken) return <AdminPanel token={adminToken} onLogout={() => void logoutAccount()} onUnauthorized={() => { clearAdminToken(); setView('terminal') }} notificationTarget={notificationTarget} />
+  if (view === 'admin-signup') return <AdminSignup onBack={() => setView('terminal')} />
+  if (view === 'admin-recovery') return <PasswordRecovery onBack={() => setView('terminal')} />
+  return <TerminalAccess onAdmin={token => { setAdminToken(token); setView('admin') }} onCreateAccount={() => setView('admin-signup')} onForgotPassword={() => setView('admin-recovery')} />
 }
 
-// ─── Shell principal: roteamento por hash ─────────────────────────────────────
+// Shell principal: acesso definido pelo perfil autenticado.
 
 export default function App() {
   const [view, setView] = useState<View>('terminal')

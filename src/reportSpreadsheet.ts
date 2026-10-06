@@ -5,7 +5,7 @@ export async function buildSpreadsheet(report: Report, selected: string): Promis
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'Ponto Digital'
   const sheet = workbook.addWorksheet('Relatório', { views: [{ state: 'frozen', ySplit: 1 }] })
-  const headers = ['Funcionário', 'Matrícula', 'Departamento', 'Função', 'De', 'Até', 'Horas previstas', 'Horas trabalhadas', 'Abonadas (atestado)', 'Total cumprido', 'Extras na folga', 'Valor/h extra (R$)', 'Total extras (R$)', 'Horas devidas', 'Intervalo realizado', 'Intervalo a mais', 'Batidas', 'Horas normais', 'Valor/h normal (R$)', 'Valor horas normais (R$)', 'Total trabalhado (R$)']
+  const headers = ['Funcionário', 'Matrícula', 'Departamento', 'Função', 'De', 'Até', 'Horas previstas', 'Horas trabalhadas', 'Abonadas (atestado)', 'Total cumprido', 'Extras na folga', 'Valor/h extra (R$)', 'Total extras (R$)', 'Horas devidas', 'Intervalo realizado', 'Intervalo a mais', 'Batidas', 'Horas normais', 'Valor/h normal (R$)', 'Valor horas normais (R$)', 'Total a pagar (R$)']
   sheet.addRow(headers)
   const rows = report.rows.filter(row => !selected || String(row.id) === selected)
   for (const row of rows) {
@@ -37,9 +37,9 @@ export async function buildSpreadsheet(report: Report, selected: string): Promis
     ['Ponto Digital — relatório de horas'],
     [`Período: ${report.from} a ${report.to}`],
     ['Horas são valores de duração e podem ser somadas. Valores em reais são numéricos.'],
-    ['Valor/h extra é a tarifa atual do funcionário. Total extras corresponde ao trabalho em folgas.'],
-    ['Horas normais = trabalhadas fora das folgas. Total trabalhado em reais = valor das horas normais + extras nas folgas.'],
-    ['Intervalos e horas abonadas não entram no valor trabalhado. Tarifas atuais recalculam períodos anteriores.'],
+    [report.closed_at ? `Mês fechado em ${report.closed_at}. Tarifas e valores preservados.` : 'Relatório em aberto: as tarifas atuais recalculam os valores.'],
+    ['Horas normais = trabalhadas fora das folgas. Total a pagar = valor das horas normais + extras nas folgas.'],
+    ['Intervalos e horas abonadas não entram no valor trabalhado. Somente meses fechados preservam as tarifas históricas.'],
     ['Células monetárias vazias indicam tarifa não cadastrada; não significam zero.'],
     ['Pontos e relatórios são preservados após a exclusão das fotos por retenção.'],
   ])

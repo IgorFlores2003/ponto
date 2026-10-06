@@ -27,7 +27,7 @@ export type Entry = {
   occurred_at: string
   punch_photo?: string | null
   face_detected?: boolean | null
-  divergence_status?: 'ok' | 'divergence' | 'no_face' | 'pending' | 'confirmed' | 'rejected' | null
+  divergence_status?: 'ok' | 'divergence' | 'no_face' | 'pending' | 'review_required' | 'confirmed' | 'rejected' | null
   divergence_reason?: string | null
   admin_confirmed?: boolean
   admin_confirmed_at?: string | null
@@ -58,6 +58,7 @@ export type ReportRow = Employee & {
 }
 
 export type Report = {
+  closed_at?: string
   from: string
   to: string
   generated_at: string

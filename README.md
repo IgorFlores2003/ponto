@@ -20,7 +20,7 @@ npm run dev
 
 `admin:create` solicita usuário e senha (mínimo 10 caracteres, sem exibir a senha no terminal). O comando não usa senha padrão. Para dados de demonstração, veja a seção de seeds. Execute o comando com o mesmo `DATABASE_PATH` usado pelo backend. É possível criar outros administradores pelo mesmo comando.
 
-Abra a URL do Vite para acessar o terminal. Use **Acessar administrativo** para abrir o login do painel e cadastrar funcionários e PINs exclusivos. Por exemplo: Igor com `1234` e Yasmim com `2344` (esses exemplos podem ser criados com `npm run db:seed`).
+Abra a URL do Vite e entre com sua conta: admin abre o painel administrativo; Ponto abre o terminal. No painel admin, vá em **Cadastros → Cadastrar usuário Ponto** para criar o usuário e a senha de acesso ao terminal. Essa conta não administra funcionários ou relatórios. No terminal, os funcionários continuam usando seus PINs exclusivos. O cadastro de funcionários permanece no painel administrativo. Por exemplo: Igor com `1234` e Yasmim com `2344` (esses exemplos podem ser criados com `npm run db:seed`).
 
 ## Funcionário
 
@@ -242,3 +242,7 @@ O aplicativo exige login antes de abrir o terminal. Os funcionários continuam u
 A configuração e a migração gradual estão em [docs/supabase.md](docs/supabase.md). Novas variáveis: `TERMINAL_AUTH_PROVIDER`, `PHOTO_STORAGE`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_STORAGE_BUCKET` e `AUTH_SESSION_ENCRYPTION_KEY`, exclusivamente no backend.
 
 Execute a migration 015 antes de publicar. API e APK precisam ser atualizados juntos: versões antigas do terminal não enviam o novo token de acesso.
+
+### Contas Ponto
+
+Aplique `npm run db:migrate` antes de usar o cadastro de contas Ponto. Entre como admin e abra **Cadastros → Cadastrar usuário Ponto**. Informe um usuário sem espaços e uma senha de pelo menos 10 caracteres. Saia da conta admin e entre com essas credenciais na mesma tela de login para abrir o batedor existente. As contas Ponto usam autenticação local e funcionam também quando o terminal legado está configurado com Supabase.

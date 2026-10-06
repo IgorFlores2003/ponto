@@ -1,0 +1,42 @@
+import { execFileSync } from 'node:child_process'
+import { mkdirSync } from 'node:fs'
+import { chromium, expect } from '@playwright/test'
+const adb = process.env.ADB || '/Users/igorfloresbento/Library/Android/sdk/platform-tools/adb'
+const shell = (...args) => execFileSync(adb, ['-s', process.env.ANDROID_SERIAL || 'emulator-5554', ...args], { encoding: 'utf8' }).trim()
+const pid = shell('shell', 'pidof', 'com.pontodigital.app')
+if (!/^\d+$/.test(pid)) throw new Error('Inicie o APK de debug no emulador antes do teste.')
+shell('forward', 'tcp:9222', `localabstract:webview_devtools_remote_${pid}`)
+const browser = await chromium.connectOverCDP('http://127.0.0.1:9222')
+try {
+  const page = browser.contexts()[0].pages()[0]
+  page.setDefaultTimeout(20000)
+  await expect(page.getByRole('button', { name: 'Entrar', exact: true })).toBeEnabled()
+  await page.getByLabel('Usuário ou e-mail').fill('admin')
+  await page.getByLabel('Senha de acesso', { exact: true }).fill('AdminE2E12345')
+  await page.getByRole('button', { name: 'Entrar', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Área administrativa' })).toBeVisible()
+  await page.getByRole('button', { name: 'Relatórios', exact: true }).click()
+  await page.getByLabel('Selecionar mês do pagamento').fill('2026-09')
+  await page.getByRole('button', { name: 'Baixar PDF', exact: true }).click()
+  await expect.poll(() => shell('shell', 'run-as', 'com.pontodigital.app', 'ls', 'cache/reports')).toContain('.pdf')
+  shell('shell', 'input', 'keyevent', '4')
+  await page.getByRole('button', { name: 'Cadastros', exact: true }).click()
+  await page.getByRole('button', { name: 'Cadastrar usuário Ponto', exact: true }).click()
+  const accounts = page.locator('section').filter({ has: page.getByRole('button', { name: 'Criar conta Ponto', exact: true }) })
+  await accounts.getByLabel('Usuário Ponto', { exact: true }).fill('ponto-android')
+  await accounts.getByLabel('Senha', { exact: true }).fill('AndroidPonto12345')
+  await accounts.getByRole('button', { name: 'Criar conta Ponto', exact: true }).click()
+  await expect(accounts.getByRole('status')).toContainText('criada')
+  await page.getByRole('button', { name: 'Sair da conta', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /Sair/ }).click()
+  await page.getByLabel('Usuário ou e-mail').fill('ponto-android')
+  await page.getByLabel('Senha de acesso', { exact: true }).fill('AndroidPonto12345')
+  await page.getByRole('button', { name: 'Entrar', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Digite seu PIN' })).toBeVisible()
+  await page.getByLabel('PIN de 4 números').fill('1234')
+  await page.getByRole('button', { name: 'Marcar ponto', exact: true }).click()
+  await expect(page.getByText('Teste Desktop', { exact: true })).toBeVisible({ timeout: 30000 })
+  mkdirSync('test-results/android', { recursive: true })
+  await page.screenshot({ path: 'test-results/android/punch.png', fullPage: true })
+  console.log('Android: login admin, PDF nativo salvo, cadastro Ponto e batida com câmera virtual aprovados.')
+} finally { await browser.close(); shell('forward', '--remove', 'tcp:9222') }

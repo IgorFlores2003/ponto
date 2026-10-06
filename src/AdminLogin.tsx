@@ -14,10 +14,12 @@ interface Props {
 const REMEMBER_DURATION = 8 * 60 * 60 * 1000 // 8 horas
 
 function loadSavedToken(): string | null {
-  const token = localStorage.getItem('admin_token')
-  const expiresAt = localStorage.getItem('admin_token_expires')
+  const token = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token')
+  const expiresAt = sessionStorage.getItem('admin_token_expires') || localStorage.getItem('admin_token_expires')
   if (!token || !expiresAt) return null
   if (!Number.isFinite(Number(expiresAt)) || Date.now() >= Number(expiresAt)) {
+    sessionStorage.removeItem('admin_token')
+    sessionStorage.removeItem('admin_token_expires')
     localStorage.removeItem('admin_token')
     localStorage.removeItem('admin_token_expires')
     return null

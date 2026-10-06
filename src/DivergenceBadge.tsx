@@ -58,6 +58,8 @@ export default function DivergenceBadge({ entry }: Props) {
     )
   }
 
+  if (entry.divergence_status === 'review_required') return <span className="inline-flex items-center gap-1 rounded-full bg-[#fef3c7] px-2 py-0.5 text-[10px] font-bold text-[#92400e]"><FiAlertTriangle size={10} aria-hidden="true" /> Conferência manual</span>
+
   if (entry.divergence_status === 'pending') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-medium text-[#4b5563]">

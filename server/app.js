@@ -1,4 +1,6 @@
 import express from 'express'
+import { securityHeaders } from './security.js'
+import { createPhotoAnalysis } from './photo-analysis.js'
 import { validPhoto } from './photos.js'
 import { createPhotoStorage } from './photo-storage.js'
 import { createSessionAuth } from './session-auth.js'
@@ -11,7 +13,7 @@ import { parseDuration } from './durations.js'
 import { matchingBreak, validRule, localDateTime } from './breaks.js'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { prunePhotos } from './photo-retention.js'
-import { pinDigest, rateLimit } from './auth.js'
+import { pinDigest, rateLimit, hashPassword } from './auth.js'
 import { reportFor, validDate } from './reports.js'
 import { applyCors } from './cors.js'
 import { saveMonthlyRoster, validateMonthlyRoster } from './monthly-roster.js'
@@ -21,14 +23,18 @@ function validWorkdays(days) { return Array.isArray(days) && days.every(day => N
 export const transitions = { 'Entrada': ['Saída do almoço', 'Saída', 'Início do intervalo'], 'Saída do almoço': ['Entrada do almoço'], 'Entrada do almoço': ['Saída', 'Início do intervalo'], 'Início do intervalo': ['Fim do intervalo'], 'Fim do intervalo': ['Saída', 'Início do intervalo'], 'Saída': ['Entrada'] }
 const columns = ['id', 'name', 'registration', 'department', 'job_title', 'photo', 'target_hours', 'work_minutes', 'break_minutes', 'workdays', 'overtime_rate_cents', 'hourly_rate_cents', 'created_at']
 const publicEmployee = employee => ({ ...Object.fromEntries(columns.map(key => [key, employee[key]])), active: !!employee.active, has_pin: !!employee.pin_digest })
-export function createApp(db, { clock = () => new Date(), analyzer = analyzePunchPhoto, config = supabaseConfig(), fetcher } = {}) {
+export function createApp(db, { clock = () => new Date(), analyzer = analyzePunchPhoto, config = supabaseConfig(), fetcher, backgroundTask = promise => { void promise } } = {}) {
   const app = express()
+  app.use(securityHeaders(config))
   if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1)
   const auth = createSessionAuth(db, config, fetcher)
   const registrations = createAdminRegistration(db, config, fetcher)
   const passwords = createPasswordManagement(db, config, fetcher)
   const terminalAuth = createSessionAuth(db, config, fetcher, 'terminal')
+  const pontoAuth = createSessionAuth(db, config, fetcher, 'ponto')
   const photos = createPhotoStorage(config, fetcher)
+  const analysisJobs = createPhotoAnalysis(db, photos, analyzer)
+  const processAnalysis = () => backgroundTask(analysisJobs.runOne().catch(() => { console.warn('Fila de análise indisponível; nova tentativa ocorrerá depois.') }))
   const publicEntry = async entry => (await photos.expose([entry]))[0]
   app.use((req, res, next) => {
     const allowed = applyCors(req, res)
@@ -42,6 +48,7 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     const provided = req.headers.authorization || ''
     const expected = secret ? `Bearer ${secret}` : ''
     if (!secret || Buffer.byteLength(provided) !== Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(provided), Buffer.from(expected))) return res.status(401).json({ error: 'Acesso não autorizado.' })
+    processAnalysis()
     const result = await prunePhotos(db, photos, { apply: true })
     res.status(result.failed ? 503 : 200).json(result)
   })
@@ -59,7 +66,12 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     res.json({ message: 'E-mail confirmado. Aguarde a aprovação de um administrador para entrar.' })
   })
   app.post('/api/auth/login', rateLimit(db, 'login', 10, 15 * 60000), async (req, res) => {
-    res.json(await auth.login(req.body?.username, req.body?.password))
+    const { username, password } = req.body || {}
+    const admin = typeof username === 'string' && await db('admins').where({ username: username.trim().toLowerCase() }).first()
+    const ponto = typeof username === 'string' && await db('ponto_users').where({ username: username.trim().toLowerCase() }).first()
+    const service = admin ? auth : ponto ? pontoAuth : config.terminalAuthProvider === 'local' ? auth : terminalAuth
+    const session = await service.login(username, password)
+    res.json({ ...session, role: service === auth ? 'admin' : 'ponto' })
   })
   app.post('/api/auth/forgot-password', rateLimit(db, 'forgot-password', 3, 15 * 60000), async (req, res) => {
     await passwords.forgot(req.body?.email)
@@ -75,18 +87,20 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
   })
   app.use('/api/terminal', async (req, res, next) => {
     const token = req.headers.authorization?.match(/^Bearer ([a-f0-9]{64})$/)?.[1]
-    const session = token && await terminalAuth.authenticate(token)
+    const pontoSession = token && await pontoAuth.authenticate(token)
+    const session = pontoSession || (token && await terminalAuth.authenticate(token))
+    res.locals.terminalAuth = pontoSession ? pontoAuth : terminalAuth
     if (!session) return res.status(401).json({ error: 'Entre para liberar o terminal de ponto.', code: 'TERMINAL_SESSION_EXPIRED' })
     res.locals.terminalSession = session
     next()
   })
   app.get('/api/terminal/me', (req, res) => res.json({ expires_at: Number(res.locals.terminalSession.expires_at) }))
-  app.post('/api/terminal/logout', async (req, res) => { await terminalAuth.logout(res.locals.terminalSession); res.sendStatus(204) })
+  app.post('/api/terminal/logout', async (req, res) => { await res.locals.terminalAuth.logout(res.locals.terminalSession); res.sendStatus(204) })
   app.post('/api/terminal/punch', rateLimit(db, 'pin', 30, 60000), async (req, res) => {
     const { pin, kind = 'auto', interval_type, request_id, photo = null, client_face_detected = null } = req.body || {}
     if (typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'Informe um PIN de 4 números.' })
     if (typeof request_id !== 'string' || !/^[a-f0-9-]{36}$/i.test(request_id)) return res.status(400).json({ error: 'Identificador de batida inválido.' })
-    if (photo && !validPhoto(photo)) return res.status(400).json({ error: 'Foto de batida inválida.' })
+    if (!photo || !validPhoto(photo)) return res.status(400).json({ error: 'Uma foto válida da câmera é obrigatória para registrar o ponto.' })
     if (kind !== 'auto' && kind !== 'start_break' && kind !== 'end_break' && kind !== 'interval' && !Object.hasOwn(transitions, kind)) return res.status(400).json({ error: 'Tipo de batida inválido.' })
     if (['start_break', 'interval'].includes(kind) && !['lunch', 'coffee'].includes(interval_type)) return res.status(400).json({ error: 'Selecione almoço ou café.' })
     const employee = await db('employees').where({ pin_digest: await pinDigest(db, pin) }).first()
@@ -102,7 +116,7 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
       } else if (process.env.GEMINI_API_KEY) {
         divergence_status = 'pending'
       } else {
-        divergence_status = 'ok'
+        divergence_status = 'review_required'
       }
     }
     let storedPhoto
@@ -144,34 +158,13 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
         admin_confirmed: false,
         ...breakInfo,
       }).returning('id')
+      if (divergence_status === 'pending') await trx('photo_analysis_jobs').insert({ entry_id: id })
       return trx('entries').where({ id }).first()
     }) } catch (error) { await photos.discard(storedPhoto); throw error }
     if (result?.inactive) return res.status(403).json({ error: 'Funcionário desativado. Procure o administrador.' })
     if (!result) return res.status(409).json({ error: 'Batida incompatível com a jornada ou registrada há poucos segundos. Confira o tipo e aguarde 5 segundos.' })
 
-    // Se houver foto e chave Gemini, roda análise assíncrona sem travar a resposta para o funcionário
-    if (result.punch_photo && process.env.GEMINI_API_KEY && result.id && result.divergence_status === 'pending') {
-      void (async () => {
-        try {
-          const analysis = await analyzer({
-            punchPhoto: await photos.dataUrl(result.punch_photo),
-            employeePhoto: await photos.dataUrl(employee.photo),
-          })
-          if (analysis) {
-            await db('entries').where({ id: result.id, admin_confirmed: false }).update({
-              face_detected: analysis.face_detected,
-              divergence_status: analysis.divergence_status,
-              divergence_reason: analysis.divergence_reason,
-            })
-          }
-        } catch (err) {
-          // O banco pode fechar antes da requisição externa terminar
-          if (!/connection|closed|pool/i.test(err?.message || '')) {
-            console.warn('Erro ao processar análise para batida', result.id, err?.message || err)
-          }
-        }
-      })()
-    }
+    processAnalysis()
 
     res.json({ employee_name: employee.name, kind: result.kind, break_name: result.break_name, occurred_at: result.occurred_at })
   })
@@ -187,7 +180,52 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     res.locals.session = session
     next()
   })
-  app.get('/api/auth/me', async (req, res) => { const admin = await db('admins').where({ id: res.locals.session.admin_id }).first(); res.json({ username: admin.username }) })
+  app.get('/api/ponto-users', async (req, res) => {
+    res.json(await db('ponto_users').select('id', 'username', 'active').orderBy('username'))
+  })
+  app.post('/api/ponto-users', rateLimit(db, 'create-ponto', 20, 15 * 60000), async (req, res) => {
+    const { username, password } = req.body || {}
+    if (typeof username !== 'string' || !username.trim() || username.trim().length > 120 || /\s/.test(username.trim()) || typeof password !== 'string' || password.length < 10 || password.length > 1024) {
+      return res.status(400).json({ error: 'Informe um usuário sem espaços (até 120 caracteres) e senha de 10 a 1024 caracteres.' })
+    }
+    const normalized = username.trim().toLowerCase()
+    for (const table of ['admins', 'terminal_users', 'ponto_users']) {
+      if (await db(table).where({ username: normalized }).first()) return res.status(409).json({ error: 'Esse usuário já está cadastrado.' })
+    }
+    try {
+      const [account] = await db('ponto_users').insert({ username: normalized, password_hash: await hashPassword(password) }).returning(['id', 'username'])
+      res.status(201).json({ ...account, role: 'ponto', active: true })
+    } catch (error) {
+      if (error.code === '23505' || error.code === 'SQLITE_CONSTRAINT_UNIQUE') return res.status(409).json({ error: 'Esse usuário já está cadastrado.' })
+      throw error
+    }
+  })
+  app.post('/api/ponto-users/:id/status', async (req, res) => {
+    const id = Number(req.params.id)
+    const active = req.body?.active
+    if (!Number.isSafeInteger(id) || id <= 0 || typeof active !== 'boolean') return res.status(400).json({ error: 'Conta ou status inválido.' })
+    const found = await db.transaction(async trx => {
+      const updated = await trx('ponto_users').where({ id }).update({ active })
+      if (updated && !active) await trx('ponto_sessions').where({ ponto_user_id: id }).delete()
+      return updated
+    })
+    if (!found) return res.status(404).json({ error: 'Conta Ponto não encontrada.' })
+    res.json({ id, active })
+  })
+  app.post('/api/ponto-users/:id/password', rateLimit(db, 'reset-ponto-password', 20, 15 * 60000), async (req, res) => {
+    const id = Number(req.params.id)
+    const password = req.body?.password
+    if (!Number.isSafeInteger(id) || id <= 0 || typeof password !== 'string' || password.length < 10 || password.length > 1024) return res.status(400).json({ error: 'Informe uma conta válida e senha de 10 a 1024 caracteres.' })
+    const password_hash = await hashPassword(password)
+    const found = await db.transaction(async trx => {
+      const updated = await trx('ponto_users').where({ id }).update({ password_hash })
+      if (updated) await trx('ponto_sessions').where({ ponto_user_id: id }).delete()
+      return updated
+    })
+    if (!found) return res.status(404).json({ error: 'Conta Ponto não encontrada.' })
+    res.json({ message: 'Senha redefinida. A conta precisa entrar novamente.' })
+  })
+  app.get('/api/auth/me', async (req, res) => { const admin = await db('admins').where({ id: res.locals.session.admin_id }).first(); res.json({ username: admin.username, role: 'admin' }) })
   app.post('/api/auth/change-password', rateLimit(db, 'change-password', 5, 15 * 60000), async (req, res) => {
     await passwords.change(res.locals.session.admin_id, req.body)
     res.json({ message: 'Senha alterada. Entre novamente com a nova senha.' })
@@ -336,19 +374,46 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     if (!count) return res.status(404).json({ error: 'Evento não encontrado.' })
     res.sendStatus(204)
   })
+  async function liveReport(connection, from, to) {
+    const employees = (await connection('employees').orderBy('name')).map(publicEmployee)
+    const windowStart = new Date(Date.parse(from) - 30 * 86400000).toISOString().slice(0, 10)
+    const windowEnd = new Date(Date.parse(`${to}T00:00:00-03:00`) + 86400000).toISOString()
+    const entries = await connection('entries').where('occurred_at', '>=', `${windowStart}T00:00:00.000Z`).where('occurred_at', '<', windowEnd).orderBy('id')
+    const events = await connection('schedule_events').select('id', connection.raw('CAST(event_date AS TEXT) AS event_date'), 'kind', 'employee_id', 'starts_at', 'ends_at', 'work_minutes', 'break_minutes')
+    return { from, to, generated_at: clock().toISOString(), rows: reportFor(employees, entries, from, to, clock().getTime(), events) }
+  }
+  function monthRange(month) {
+    if (typeof month !== 'string' || !/^\d{4}-\d{2}$/.test(month) || !validDate(`${month}-01`)) return null
+    const [year, number] = month.split('-').map(Number)
+    return { from: `${month}-01`, to: `${month}-${new Date(Date.UTC(year, number, 0)).getUTCDate()}` }
+  }
   app.get('/api/reports', async (req, res) => {
     const { from, to } = req.query
     if (!validDate(from) || !validDate(to) || from > to || Date.parse(to) - Date.parse(from) > 366 * 86400000) return res.status(400).json({ error: 'Informe um período válido de até 367 dias.' })
-    const employees = (await db('employees').orderBy('name')).map(publicEmployee)
-    // Busca batidas no período + 30 dias antes (para capturar jornadas abertas antes de `from`)
-    const windowStart = new Date(Date.parse(from) - 30 * 86400000).toISOString().slice(0, 10)
-    const windowEnd = `${to}T23:59:59.999Z`
-    const entries = await db('entries')
-      .where('occurred_at', '>=', `${windowStart}T00:00:00.000Z`)
-      .where('occurred_at', '<=', windowEnd)
-      .orderBy('id')
-    const events = await db('schedule_events').select('id', db.raw('CAST(event_date AS TEXT) AS event_date'), 'kind', 'employee_id', 'starts_at', 'ends_at', 'work_minutes', 'break_minutes')
-    res.json({ from, to, generated_at: new Date().toISOString(), rows: await photos.expose(reportFor(employees, entries, from, to, Date.now(), events)) })
+    const range = monthRange(from.slice(0, 7))
+    if (range.from === from && range.to === to) {
+      const closed = await db('report_closures').where({ month: from.slice(0, 7) }).first()
+      if (closed) return res.json(JSON.parse(closed.report_json))
+    }
+    const report = await liveReport(db, from, to)
+    res.json({ ...report, rows: await photos.expose(report.rows) })
+  })
+  app.post('/api/reports/close', async (req, res) => {
+    const month = req.body?.month
+    const range = monthRange(month)
+    const currentMonth = localDateTime(clock()).date.slice(0, 7)
+    if (!range || month >= currentMonth) return res.status(400).json({ error: 'Selecione um mês encerrado para fechar o pagamento.' })
+    const result = await db.transaction(async trx => {
+      const existing = await trx('report_closures').where({ month }).first()
+      if (existing) return JSON.parse(existing.report_json)
+      const report = await liveReport(trx, range.from, range.to)
+      if (!report.rows.length || report.rows.some(row => row.total_pay_cents === null || row.status !== 'Fora do expediente')) throw new SupabaseError('Confira as tarifas e encerre as jornadas abertas antes de fechar o mês.', 409)
+      // Store the amounts and rates, never signed photo URLs or biometric data.
+      const snapshot = { ...report, closed_at: clock().toISOString(), rows: report.rows.map(row => ({ ...row, photo: null })) }
+      const inserted = await trx('report_closures').insert({ month, closed_by: res.locals.session.admin_id, closed_at: snapshot.closed_at, report_json: JSON.stringify(snapshot) }).onConflict('month').ignore().returning('month')
+      return inserted.length ? snapshot : JSON.parse((await trx('report_closures').where({ month }).first()).report_json)
+    }, db.client.config.client === 'pg' ? { isolationLevel: 'repeatable read' } : {})
+    res.json(result)
   })
   app.use('/api/employees/:id', async (req, res, next) => {
     const id = Number(req.params.id)
@@ -426,10 +491,11 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     res.json(await photos.expose(entries))
   })
   app.get('/api/entry-alerts', async (req, res) => {
+    processAnalysis()
     const rawPage = req.query.page ?? '1'
     if (typeof rawPage !== 'string' || !/^[1-9]\d{0,5}$/.test(rawPage)) return res.status(400).json({ error: 'Página inválida.' })
     const page = Number(rawPage), pageSize = 20
-    const pending = () => db('entries').whereIn('divergence_status', ['divergence', 'no_face'])
+    const pending = () => db('entries').whereIn('divergence_status', ['divergence', 'no_face', 'review_required'])
       .where(builder => builder.where('admin_confirmed', false).orWhereNull('admin_confirmed'))
     const [{ total }, rows] = await Promise.all([
       pending().count('* as total').first(),

@@ -55,14 +55,17 @@ Responda em formato JSON:
     parts.push({ inlineData: { mimeType: punchParsed.mimeType, data: punchParsed.data } })
   }
 
+  const deadline = Date.now() + 18000
   for (const model of MODELS) {
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) break
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`
 
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(Math.min(8000, remaining)),
         body: JSON.stringify({
           contents: [{ parts }],
           generationConfig: {
@@ -86,7 +89,8 @@ Responda em formato JSON:
       if (!text) continue
 
       const result = JSON.parse(text)
-      const face_detected = Boolean(result.face_detected)
+      if (typeof result.face_detected !== 'boolean' || typeof result.has_divergence !== 'boolean') continue
+      const face_detected = result.face_detected
       const has_divergence = Boolean(result.has_divergence)
       const reason = typeof result.reason === 'string' ? result.reason.trim() : ''
 

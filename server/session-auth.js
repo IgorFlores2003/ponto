@@ -28,11 +28,12 @@ function providerSession(data) {
 export function createSessionAuth(db, config, fetcher, scope = 'admin') {
   const request = supabaseClient(config, fetcher)
   const terminal = scope === 'terminal'
+  const ponto = scope === 'ponto'
   const provider = terminal ? config.terminalAuthProvider : 'local'
   const local = provider === 'local'
-  const sessions = terminal ? 'terminal_sessions' : 'sessions'
-  const accounts = terminal && !local ? 'terminal_users' : 'admins'
-  const ownerField = terminal && !local ? 'terminal_user_id' : 'admin_id'
+  const sessions = ponto ? 'ponto_sessions' : terminal ? 'terminal_sessions' : 'sessions'
+  const accounts = ponto ? 'ponto_users' : terminal && !local ? 'terminal_users' : 'admins'
+  const ownerField = ponto ? 'ponto_user_id' : terminal && !local ? 'terminal_user_id' : 'admin_id'
   const dummyHash = local ? hashPassword(randomBytes(24).toString('hex')) : null
   async function revokeUpstream(payload) {
     try { await request('/auth/v1/logout?scope=local', { method: 'POST', token: payload.access_token }) }
@@ -49,7 +50,7 @@ export function createSessionAuth(db, config, fetcher, scope = 'admin') {
         sessionProvider = 'supabase'
       } else {
         const valid = await verifyPassword(password, account?.password_hash || await dummyHash)
-        if (!account || !valid) throw denied()
+        if (!account || !valid || (ponto && !account.active)) throw denied()
       }
     }
     if (sessionProvider === 'supabase') {
@@ -57,7 +58,7 @@ export function createSessionAuth(db, config, fetcher, scope = 'admin') {
       payload = providerSession(result)
       // Only explicitly linked Auth accounts may open this company terminal.
       account = await db(accounts).where({ supabase_user_id: payload.user_id }).first()
-      if (!account || (accounts === 'terminal_users' && !account.active) || !result.user.email_confirmed_at) { await revokeUpstream(payload); throw denied() }
+      if (!account || ((ponto || accounts === 'terminal_users') && !account.active) || !result.user.email_confirmed_at) { await revokeUpstream(payload); throw denied() }
     }
     const token = randomBytes(32).toString('hex')
     const token_hash = hashToken(token)
@@ -79,7 +80,7 @@ export function createSessionAuth(db, config, fetcher, scope = 'admin') {
       const session = await query.first()
       if (!session) return null
       const account = await trx(accounts).where({ id: session[ownerField] }).first()
-      if (!account || (accounts === 'terminal_users' && !account.active)) return null
+      if (!account || ((ponto || accounts === 'terminal_users') && !account.active)) return null
       const expectedProvider = local && account.supabase_user_id ? 'supabase' : provider
       if (session.auth_provider !== expectedProvider) return null
       if (expectedProvider === 'local') return session

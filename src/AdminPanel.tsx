@@ -1,9 +1,10 @@
+import PontoAccounts from './PontoAccounts'
 import DateInput from './DateInput'
 import AdminApprovals from './AdminApprovals'
 import ChangePassword from './ChangePassword'
 import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState, lazy, Suspense } from 'react'
-import { FiSmartphone, FiLogOut, FiRefreshCw } from 'react-icons/fi'
+import { FiLogOut, FiRefreshCw } from 'react-icons/fi'
 import EntryNotifications from './EntryNotifications'
 import BottomNav from './BottomNav'
 import SuccessToast from './SuccessToast'
@@ -21,14 +22,13 @@ type Tab = 'dashboard' | 'calendario' | 'funcionarios' | 'relatorios'
 
 interface Props {
   token: string
-  onExit: () => void
   onLogout: () => void
   onUnauthorized: () => void
   notificationTarget: HTMLDivElement | null
 }
 
 /** Painel administrativo completo: busca dados, gerencia abas e delega a subcomponentes. */
-export default function AdminPanel({ token, onExit, onLogout, onUnauthorized, notificationTarget }: Props) {
+export default function AdminPanel({ token, onLogout, onUnauthorized, notificationTarget }: Props) {
   const [tab, setTab] = useState<Tab>('dashboard')
   const [employees, setEmployees] = useState<Employee[]>([])
   const [monthEvents, setMonthEvents] = useState<ScheduleEvent[]>([])
@@ -173,9 +173,6 @@ export default function AdminPanel({ token, onExit, onLogout, onUnauthorized, no
 
       {/* Barra superior */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <button type="button" onClick={onExit} className="flex items-center gap-1.5 text-xs font-bold text-[#317455] hover:text-[#173d2f]">
-          <FiSmartphone size={16} aria-hidden="true" /> Terminal de ponto
-        </button>
         <div className="flex items-center gap-3">
           <button type="button" disabled={busy}
             className="flex items-center gap-1 bg-transparent text-xs font-bold text-[#317455] hover:text-[#173d2f] disabled:opacity-55"
@@ -185,9 +182,10 @@ export default function AdminPanel({ token, onExit, onLogout, onUnauthorized, no
         </div>
       </div>
 
+      {tab === 'funcionarios' && <PontoAccounts token={token} onUnauthorized={onUnauthorized} />}
       <BottomNav active={tab} onChange={setTab} />
       {tab === 'dashboard' && <AdminApprovals token={token} />}
-      {tab === 'dashboard' && <ChangePassword token={token} onChanged={onExit} />}
+      {tab === 'dashboard' && <ChangePassword token={token} onChanged={onUnauthorized} />}
 
       {error && (
         <div role="alert" className="mb-5 rounded-xl border border-[#e5b8b8] bg-[#fff0f0] p-3 text-[13px] text-[#913939]">
@@ -240,6 +238,16 @@ export default function AdminPanel({ token, onExit, onLogout, onUnauthorized, no
 
           {tab === 'relatorios' && (
             <div className="my-5 grid grid-cols-2 gap-3">
+              <label className={`${LABEL_CLASS} col-span-2`}>
+                Selecionar mês do pagamento
+                <input type="month" className={INPUT_CLASS} value={from.slice(0, 7) === to.slice(0, 7) ? from.slice(0, 7) : ''} onChange={event => {
+                  const month = event.target.value
+                  if (!/^\d{4}-\d{2}$/.test(month)) return
+                  const [year, number] = month.split('-').map(Number)
+                  setFrom(`${month}-01`)
+                  setTo(`${month}-${new Date(Date.UTC(year, number, 0)).getUTCDate()}`)
+                }} />
+              </label>
               <label className={LABEL_CLASS}>
                 De
                 <DateInput value={from} className={INPUT_CLASS} onChange={value => setFrom(value)} />
@@ -267,7 +275,7 @@ export default function AdminPanel({ token, onExit, onLogout, onUnauthorized, no
                   />
                 </Suspense>
               ) : (
-                <ReportTab
+                <ReportTab onReportClosed={() => setVersion(v => v + 1)}
                   report={report}
                   employees={employees}
                   entries={entries}
