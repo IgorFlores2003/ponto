@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { hashPassword, verifyPassword } from './auth.js'
 import { supabaseClient, SupabaseError } from './supabase.js'
 
@@ -24,8 +25,21 @@ export function createPasswordManagement(db, config, fetcher) {
     const email = emailOf(input)
     if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new SupabaseError('Informe um e-mail válido.', 400)
     const registration = await db('admin_registrations').where({ email }).first()
-    const account = await db('admins').where({ username: email }).whereNotNull('supabase_user_id').first()
-    if (registration || account) await request('/auth/v1/recover', { method: 'POST', body: { email } })
+    const account = await db('admins').whereRaw('lower(trim(username)) = ?', [email]).first()
+    if (registration || account) {
+      if (account && !account.supabase_user_id) {
+        // A legacy local admin gets an Auth identity only when they request recovery.
+        // Keep it unlinked until they prove access to this email with the recovery code.
+        try {
+          await request('/auth/v1/admin/users', { method: 'POST', admin: true,
+            body: { email, password: randomBytes(48).toString('base64url'), email_confirm: true } })
+        } catch (error) {
+          // An existing Auth identity can still receive a recovery message.
+          if (!(error instanceof SupabaseError) || ![400, 409].includes(error.upstreamStatus)) throw error
+        }
+      }
+      await request('/auth/v1/recover', { method: 'POST', body: { email } })
+    }
   }
   async function reset({ email: input, code, password } = {}) {
     enabled(); validatePassword(password)
@@ -39,9 +53,18 @@ export function createPasswordManagement(db, config, fetcher) {
     }
     try {
       if (!result.access_token || !result.user?.email_confirmed_at || emailOf(result.user.email) !== email) throw new SupabaseError('Não foi possível validar a recuperação.', 400)
-      const account = await db('admins').where({ supabase_user_id: result.user.id }).first()
-      if (account) await db.transaction(trx => revokeSessions(account.id, trx))
+      let account = await db('admins').where({ supabase_user_id: result.user.id }).first()
+      if (!account) account = await db('admins').whereRaw('lower(trim(username)) = ?', [email]).whereNull('supabase_user_id').first()
       await request('/auth/v1/user', { method: 'PUT', token: result.access_token, body: { password } })
+      if (account) {
+        await db.transaction(async trx => {
+          if (!account.supabase_user_id) {
+            const linked = await trx('admins').where({ id: account.id }).whereNull('supabase_user_id').update({ supabase_user_id: result.user.id })
+            if (!linked) throw new SupabaseError('Não foi possível vincular a conta. Entre em contato com o administrador.', 409)
+          }
+          await revokeSessions(account.id, trx)
+        })
+      }
     } finally { await closeRemote(result.access_token) }
   }
   async function change(adminId, { current_password: currentPassword, password } = {}) {
