@@ -24,16 +24,20 @@ export function rateLimit(db, scope, max, period) {
   return async (req, res, next) => {
     const now = Date.now()
     const key = `${scope}:${clientIp(req)}`
-    const allowed = await db.transaction(async trx => {
+    const retryAfter = await db.transaction(async trx => {
       if (trx.client.config.client === 'pg') await trx.raw('select pg_advisory_xact_lock(hashtext(?))', [key])
       await trx('attempts').where('expires_at', '<=', now).delete()
       const current = await trx('attempts').where({ key }).first()
-      if (current && current.count >= max) return false
+      if (current && current.count >= max) return Number(current.expires_at) - now
       if (current) await trx('attempts').where({ key }).increment('count', 1)
       else await trx('attempts').insert({ key, count: 1, expires_at: now + period })
-      return true
+      return 0
     })
-    if (!allowed) { res.setHeader('Retry-After', Math.ceil(period / 1000)); return res.status(429).json({ error: 'Muitas tentativas. Aguarde antes de tentar novamente.' }) }
+    if (retryAfter > 0) {
+      const minutes = Math.max(1, Math.ceil(retryAfter / 60000))
+      res.setHeader('Retry-After', Math.ceil(retryAfter / 1000))
+      return res.status(429).json({ error: `Muitas tentativas. Aguarde ${minutes} ${minutes === 1 ? 'minuto' : 'minutos'} antes de tentar novamente.` })
+    }
     next()
   }
 }

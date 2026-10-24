@@ -2,10 +2,11 @@ import { useState } from 'react'
 import PasswordInput from './PasswordInput'
 import OneTimeCodeInput from './OneTimeCodeInput'
 import { api, errorMessage, INPUT_CLASS, LABEL_CLASS } from './types'
+import type { AdminSession } from './adminSession'
 
 type Step = 'email' | 'code' | 'password' | 'done'
 
-export default function PasswordRecovery({ onBack }: { onBack: () => void }) {
+export default function PasswordRecovery({ onBack, onLogin }: { onBack: () => void; onLogin: (session: AdminSession) => void }) {
   const [step, setStep] = useState<Step>('email')
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
@@ -38,7 +39,8 @@ export default function PasswordRecovery({ onBack }: { onBack: () => void }) {
     if (password !== confirm) { setError('As senhas precisam ser iguais.'); return }
     setBusy(true)
     try {
-      const result = await api<{ message: string }>('/auth/reset-password', { email, code, password })
+      const result = await api<Partial<AdminSession> & { message: string }>('/auth/reset-password', { email, code, password })
+      if (result.token && result.expires_at) { onLogin({ token: result.token, expires_at: result.expires_at }); return }
       setMessage(result.message); setStep('done'); setPassword(''); setConfirm('')
     } catch (err) { setError(errorMessage(err)) }
     finally { setBusy(false) }
@@ -50,7 +52,7 @@ export default function PasswordRecovery({ onBack }: { onBack: () => void }) {
   const description = step === 'email' ? 'Informe o e-mail usado no cadastro. Enviaremos um código para você definir uma nova senha.'
     : step === 'code' ? `Digite o código enviado para ${email}. Confira também a pasta de spam.`
       : step === 'password' ? 'Escolha e confirme sua nova senha.'
-        : 'Sua senha foi alterada. Volte para entrar.'
+        : 'Sua senha foi alterada.'
 
   return <section className="grid gap-4 py-2">
     <h2 className="text-xl font-bold text-[#143f31]">{heading}</h2>

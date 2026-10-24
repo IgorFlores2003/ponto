@@ -2,6 +2,7 @@ import PontoAccounts from './PontoAccounts'
 import DateInput from './DateInput'
 import AdminApprovals from './AdminApprovals'
 import ChangePassword from './ChangePassword'
+import type { AdminSession } from './adminSession'
 import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { FiLogOut, FiRefreshCw } from 'react-icons/fi'
@@ -22,13 +23,14 @@ type Tab = 'dashboard' | 'calendario' | 'funcionarios' | 'relatorios'
 
 interface Props {
   token: string
+  onSession: (session: AdminSession) => void
   onLogout: () => void
   onUnauthorized: () => void
   notificationTarget: HTMLDivElement | null
 }
 
 /** Painel administrativo completo: busca dados, gerencia abas e delega a subcomponentes. */
-export default function AdminPanel({ token, onLogout, onUnauthorized, notificationTarget }: Props) {
+export default function AdminPanel({ token, onSession, onLogout, onUnauthorized, notificationTarget }: Props) {
   const [tab, setTab] = useState<Tab>('dashboard')
   const [employees, setEmployees] = useState<Employee[]>([])
   const [monthEvents, setMonthEvents] = useState<ScheduleEvent[]>([])
@@ -185,7 +187,7 @@ export default function AdminPanel({ token, onLogout, onUnauthorized, notificati
       {tab === 'funcionarios' && <PontoAccounts token={token} onUnauthorized={onUnauthorized} />}
       <BottomNav active={tab} onChange={setTab} />
       {tab === 'dashboard' && <AdminApprovals token={token} />}
-      {tab === 'dashboard' && <ChangePassword token={token} onChanged={onUnauthorized} />}
+      {tab === 'dashboard' && <ChangePassword token={token} onChanged={onSession} />}
 
       {error && (
         <div role="alert" className="mb-5 rounded-xl border border-[#e5b8b8] bg-[#fff0f0] p-3 text-[13px] text-[#913939]">

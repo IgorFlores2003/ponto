@@ -9,7 +9,13 @@ O cadastro é aberto, mas só concede acesso à empresa depois de confirmar o e-
 3. Um administrador atual entra no dashboard, abre **Aprovar novos administradores** e aprova ou recusa o cadastro. A API confere novamente a confirmação no Supabase antes de aprovar.
 4. Após aprovação, entre com e-mail e senha. Cadastros pendentes ou recusados não recebem acesso administrativo nem ao terminal local.
 
-O administrador criado pelo seed continua entrando com seu usuário atual. A opção **Mudar minha senha** exige a senha atual e encerra suas sessões administrativas e de terminal. **Esqueci minha senha** envia um código aos usuários cadastrados por e-mail; o administrador local criado pelo seed não tem e-mail verificado e não recebe recuperação por e-mail. Para usar recuperação, cadastre e aprove uma conta com e-mail pelo fluxo acima.
+**Primeiro administrador:** enquanto a tabela `admins` estiver vazia, o primeiro cadastro que confirmar o e-mail vira administrador automaticamente e já entra no painel. Um cadastro que confirmou o e-mail antes dessa regra existir vira administrador no primeiro login com e-mail e senha corretos. Depois que existe um administrador, os novos cadastros voltam a exigir aprovação. Como o cadastro é aberto, crie o primeiro administrador logo após publicar.
+
+Se sair antes da confirmação, o aplicativo guarda apenas o e-mail pendente neste aparelho. Ao abrir **Criar conta** novamente, confira o endereço e continue em **Informar código recebido**. Em outro aparelho, use **Já me cadastrei, confirmar e-mail**. É possível conferir o endereço e reenviar o código; senha e código não são salvos nesse lembrete. O lembrete é removido após confirmar o e-mail.
+
+Na recuperação de senha, um endereço sem conta administrativa recebe a mensagem **E-mail inválido: não encontramos uma conta administrativa com esse endereço.** A aceitação do envio pelo provedor não comprova entrega na caixa de entrada; confira também o spam e use **Reenviar código** se necessário.
+
+O administrador criado pelo seed continua entrando com seu usuário atual. A opção **Mudar minha senha** exige a senha atual, mantém você conectado neste aparelho e encerra as demais sessões administrativas e de terminal. Ao redefinir a senha pelo código de recuperação, o administrador também entra direto no painel; um cadastro ainda pendente só tem a senha trocada. **Esqueci minha senha** envia um código aos usuários cadastrados por e-mail; o administrador local criado pelo seed não tem e-mail verificado e não recebe recuperação por e-mail. Para usar recuperação, cadastre e aprove uma conta com e-mail pelo fluxo acima.
 
 ## Ativar Supabase Auth e SMTP
 

@@ -1,11 +1,12 @@
 import { randomBytes } from 'node:crypto'
 import { hashPassword } from './auth.js'
 import { supabaseClient, SupabaseError } from './supabase.js'
+import { providerSession } from './session-auth.js'
 
 const normalizeEmail = value => typeof value === 'string' ? value.trim().toLowerCase() : ''
 const validEmail = value => value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 const duplicateEmail = () => new SupabaseError('Este e-mail já está cadastrado. Entre com essa conta ou use outro e-mail.', 409)
-export function createAdminRegistration(db, config, fetcher) {
+export function createAdminRegistration(db, config, fetcher, sessions) {
   const request = supabaseClient(config, fetcher)
   function enabled() {
     if (!config.adminRegistrationEnabled) throw new SupabaseError('O cadastro ainda não está disponível. Entre em contato com o administrador.', 503)
@@ -13,8 +14,21 @@ export function createAdminRegistration(db, config, fetcher) {
   async function closeProviderSession(result) {
     if (result.access_token) {
       try { await request('/auth/v1/logout?scope=local', { method: 'POST', token: result.access_token }) }
-      catch { /* No application session is issued by registration or verification. */ }
+      catch { /* No application session is issued for this provider session. */ }
     }
+  }
+  // While the company has no administrator, its first confirmed registration becomes one.
+  async function promoteFirst(email, userId) {
+    const passwordHash = await hashPassword(randomBytes(32).toString('hex'))
+    return db.transaction(async trx => {
+      if (trx.client.config.client === 'pg') await trx.raw('select pg_advisory_xact_lock(hashtext(?))', ['admin-bootstrap'])
+      if (await trx('admins').first()) return null
+      const registration = await trx('admin_registrations').where({ email, supabase_user_id: userId, status: 'pending' }).whereNotNull('email_confirmed_at').first()
+      if (!registration) return null
+      await trx('admin_registrations').where({ id: registration.id }).update({ status: 'approved', reviewed_at: new Date().toISOString() })
+      const [account] = await trx('admins').insert({ username: email, password_hash: passwordHash, supabase_user_id: userId }).returning(['id', 'username'])
+      return account
+    })
   }
   async function signup({ email: input, password, name } = {}) {
     enabled()
@@ -55,9 +69,32 @@ export function createAdminRegistration(db, config, fetcher) {
       if (error instanceof SupabaseError && error.status === 401) throw new SupabaseError('Código inválido ou expirado. Solicite um novo código.', 400)
       throw error
     }
-    await closeProviderSession(result)
-    if (!result.user?.email_confirmed_at || normalizeEmail(result.user.email) !== email) throw new SupabaseError('Não foi possível confirmar o e-mail.', 400)
-    await db('admin_registrations').where({ email, supabase_user_id: result.user.id }).update({ email_confirmed_at: result.user.email_confirmed_at })
+    let session = null
+    try {
+      if (!result.user?.email_confirmed_at || normalizeEmail(result.user.email) !== email) throw new SupabaseError('Não foi possível confirmar o e-mail.', 400)
+      await db('admin_registrations').where({ email, supabase_user_id: result.user.id }).update({ email_confirmed_at: result.user.email_confirmed_at })
+      const account = await promoteFirst(email, result.user.id)
+      if (account) session = await sessions.issue(account, providerSession(result))
+      return session
+    } finally { if (!session) await closeProviderSession(result) }
+  }
+  // Lets a registration confirmed before any administrator existed claim the first admin account.
+  async function bootstrap(input, password) {
+    if (!config.adminRegistrationEnabled || typeof password !== 'string' || !password || password.length > 1024) return
+    const email = normalizeEmail(input)
+    if (!validEmail(email) || await db('admins').first()) return
+    const registration = await db('admin_registrations').where({ email, status: 'pending' }).whereNotNull('email_confirmed_at').first()
+    if (!registration) return
+    let result
+    try { result = await request('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password } }) }
+    catch (error) {
+      // A wrong password falls through to the regular login denial.
+      if (error instanceof SupabaseError && error.status === 401) return
+      throw error
+    }
+    try {
+      if (result.user?.id === registration.supabase_user_id && result.user.email_confirmed_at) await promoteFirst(email, result.user.id)
+    } finally { await closeProviderSession(result) }
   }
   async function review(id, action, reviewer) {
     enabled()
@@ -86,5 +123,5 @@ export function createAdminRegistration(db, config, fetcher) {
       }
     })
   }
-  return { signup, resend, verify, review }
+  return { signup, resend, verify, bootstrap, review }
 }

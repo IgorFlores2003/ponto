@@ -4,6 +4,7 @@ import Terminal from './Terminal'
 import PasswordInput from './PasswordInput'
 import ConfirmDialog from './ConfirmDialog'
 import { api, ApiError, errorMessage, INPUT_CLASS, LABEL_CLASS } from './types'
+import { clearAdminSession, saveAdminSession } from './adminSession'
 
 type Session = { token: string; expires_at: number }
 const STORAGE_KEY = 'terminal_session'
@@ -74,18 +75,13 @@ export default function TerminalAccess({ onAdmin, onCreateAccount, onForgotPassw
       const result = await api<Session & { role: 'admin' | 'ponto' }>('/auth/login', { username: usernameValue, password: passwordValue })
       if (result.role !== 'admin' && result.role !== 'ponto') throw new Error('Perfil de acesso inválido.')
       clearSavedSession()
-      for (const storage of [localStorage, sessionStorage]) {
-        storage.removeItem('admin_token')
-        storage.removeItem('admin_token_expires')
-      }
-      const storage = remember ? localStorage : sessionStorage
       if (result.role === 'admin') {
-        storage.setItem('admin_token', result.token)
-        storage.setItem('admin_token_expires', String(result.expires_at))
+        saveAdminSession(result, remember)
         onAdmin?.(result.token)
         return
       }
-      storage.setItem(STORAGE_KEY, JSON.stringify({ token: result.token, expires_at: result.expires_at }))
+      clearAdminSession()
+      ;(remember ? localStorage : sessionStorage).setItem(STORAGE_KEY, JSON.stringify({ token: result.token, expires_at: result.expires_at }))
       setSession(result); setPassword('')
     } catch (err) { setError(errorMessage(err)); setPassword('') }
     finally { setBusy(false) }

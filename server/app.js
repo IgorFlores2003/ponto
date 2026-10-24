@@ -28,8 +28,8 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
   app.use(securityHeaders(config))
   if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1)
   const auth = createSessionAuth(db, config, fetcher)
-  const registrations = createAdminRegistration(db, config, fetcher)
-  const passwords = createPasswordManagement(db, config, fetcher)
+  const registrations = createAdminRegistration(db, config, fetcher, auth)
+  const passwords = createPasswordManagement(db, config, fetcher, auth)
   const terminalAuth = createSessionAuth(db, config, fetcher, 'terminal')
   const pontoAuth = createSessionAuth(db, config, fetcher, 'ponto')
   const photos = createPhotoStorage(config, fetcher)
@@ -57,32 +57,36 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
     await registrations.signup(req.body)
     res.status(202).json({ message: 'Se o cadastro puder ser realizado, você receberá um código por e-mail. Após confirmar, aguarde a aprovação do administrador.' })
   })
-  app.post('/api/auth/resend', rateLimit(db, 'resend-email', 3, 15 * 60000), async (req, res) => {
+  app.post('/api/auth/resend', rateLimit(db, 'resend-email', 10, 15 * 60000), async (req, res) => {
     await registrations.resend(req.body?.email)
     res.json({ message: 'Se houver uma confirmação pendente, enviaremos um novo código.' })
   })
-  app.post('/api/auth/verify-email', rateLimit(db, 'verify-email', 10, 15 * 60000), async (req, res) => {
-    await registrations.verify(req.body?.email, req.body?.code)
+  app.post('/api/auth/verify-email', rateLimit(db, 'verify-email', 30, 15 * 60000), async (req, res) => {
+    const session = await registrations.verify(req.body?.email, req.body?.code)
+    if (session) return res.json({ ...session, role: 'admin', message: 'E-mail confirmado. Sua conta é a administradora da empresa.' })
     res.json({ message: 'E-mail confirmado. Aguarde a aprovação de um administrador para entrar.' })
   })
-  app.post('/api/auth/login', rateLimit(db, 'login', 10, 15 * 60000), async (req, res) => {
+  app.post('/api/auth/login', rateLimit(db, 'login', 30, 15 * 60000), async (req, res) => {
     const { username, password } = req.body || {}
-    const admin = typeof username === 'string' && await db('admins').where({ username: username.trim().toLowerCase() }).first()
+    const findAdmin = () => typeof username === 'string' && db('admins').where({ username: username.trim().toLowerCase() }).first()
+    let admin = await findAdmin()
+    if (!admin) { await registrations.bootstrap(username, password); admin = await findAdmin() }
     const ponto = typeof username === 'string' && await db('ponto_users').where({ username: username.trim().toLowerCase() }).first()
     const service = admin ? auth : ponto ? pontoAuth : config.terminalAuthProvider === 'local' ? auth : terminalAuth
     const session = await service.login(username, password)
     res.json({ ...session, role: service === auth ? 'admin' : 'ponto' })
   })
-  app.post('/api/auth/forgot-password', rateLimit(db, 'forgot-password', 3, 15 * 60000), async (req, res) => {
+  app.post('/api/auth/forgot-password', rateLimit(db, 'forgot-password', 10, 15 * 60000), async (req, res) => {
     await passwords.forgot(req.body?.email)
-    res.json({ message: 'Se houver uma conta com esse e-mail, enviaremos um código de recuperação.' })
+    res.json({ message: 'Código de recuperação solicitado. Confira sua caixa de entrada e a pasta de spam.' })
   })
-  app.post('/api/auth/reset-password', rateLimit(db, 'reset-password', 10, 15 * 60000), async (req, res) => {
-    await passwords.reset(req.body)
-    res.json({ message: 'Senha alterada. Entre novamente com a nova senha.' })
+  app.post('/api/auth/reset-password', rateLimit(db, 'reset-password', 30, 15 * 60000), async (req, res) => {
+    const session = await passwords.reset(req.body)
+    if (session) return res.json({ ...session, role: 'admin', message: 'Senha alterada.' })
+    res.json({ message: 'Senha alterada. Seu cadastro ainda aguarda a aprovação de um administrador para entrar.' })
   })
   app.get('/api/terminal/config', (req, res) => res.json({ provider: config.terminalAuthProvider }))
-  app.post('/api/terminal/login', rateLimit(db, 'terminal-login', 10, 15 * 60000), async (req, res) => {
+  app.post('/api/terminal/login', rateLimit(db, 'terminal-login', 30, 15 * 60000), async (req, res) => {
     res.json(await terminalAuth.login(req.body?.username, req.body?.password))
   })
   app.use('/api/terminal', async (req, res, next) => {
@@ -227,8 +231,8 @@ export function createApp(db, { clock = () => new Date(), analyzer = analyzePunc
   })
   app.get('/api/auth/me', async (req, res) => { const admin = await db('admins').where({ id: res.locals.session.admin_id }).first(); res.json({ username: admin.username, role: 'admin' }) })
   app.post('/api/auth/change-password', rateLimit(db, 'change-password', 5, 15 * 60000), async (req, res) => {
-    await passwords.change(res.locals.session.admin_id, req.body)
-    res.json({ message: 'Senha alterada. Entre novamente com a nova senha.' })
+    const session = await passwords.change(res.locals.session.admin_id, req.body)
+    res.json({ ...session, role: 'admin', message: 'Senha alterada. As outras sessões desta conta foram encerradas.' })
   })
   app.get('/api/admin-registrations', async (req, res) => {
     res.json(await db('admin_registrations').select('id', 'name', 'email', 'status', 'created_at', 'email_confirmed_at').where({ status: 'pending' }).orderBy('id'))

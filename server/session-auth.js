@@ -19,7 +19,7 @@ function decrypt(value, key, tokenHash) {
   cipher.setAuthTag(bytes.subarray(12, 28))
   return JSON.parse(Buffer.concat([cipher.update(bytes.subarray(28)), cipher.final()]).toString())
 }
-function providerSession(data) {
+export function providerSession(data) {
   if (!data?.access_token || !data?.refresh_token || !data?.user?.id || !Number.isFinite(data.expires_in)) throw new SupabaseError()
   return { access_token: data.access_token, refresh_token: data.refresh_token, user_id: data.user.id,
     expires_at: Date.now() + data.expires_in * 1000 }
@@ -60,12 +60,16 @@ export function createSessionAuth(db, config, fetcher, scope = 'admin') {
       account = await db(accounts).where({ supabase_user_id: payload.user_id }).first()
       if (!account || ((ponto || accounts === 'terminal_users') && !account.active) || !result.user.email_confirmed_at) { await revokeUpstream(payload); throw denied() }
     }
+    return issue(account, payload)
+  }
+  // Opens an application session; `payload` is the Supabase session backing it, if any.
+  async function issue(account, payload = null) {
     const token = randomBytes(32).toString('hex')
     const token_hash = hashToken(token)
     const expires_at = Date.now() + SESSION_DURATION
     try {
       await db(sessions).where('expires_at', '<=', Date.now()).delete()
-      await db(sessions).insert({ token_hash, [ownerField]: account.id, expires_at, auth_provider: sessionProvider,
+      await db(sessions).insert({ token_hash, [ownerField]: account.id, expires_at, auth_provider: payload ? 'supabase' : 'local',
         provider_session: payload ? encrypt(payload, config.encryptionKey, token_hash) : null })
     } catch (error) { if (payload) await revokeUpstream(payload); throw error }
     return { token, expires_at, username: account.username }
@@ -73,36 +77,38 @@ export function createSessionAuth(db, config, fetcher, scope = 'admin') {
   async function authenticate(token) {
     if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null
     const token_hash = hashToken(token)
+    const session = await db(sessions).where({ token_hash }).where('expires_at', '>', Date.now()).first()
+    if (!session) return null
+    const account = await db(accounts).where({ id: session[ownerField] }).first()
+    if (!account || ((ponto || accounts === 'terminal_users') && !account.active)) return null
+    const expectedProvider = local && account.supabase_user_id ? 'supabase' : provider
+    if (session.auth_provider !== expectedProvider) return null
+    if (expectedProvider === 'local') return session
+    if (local && !config.adminRegistrationEnabled) return null
+    let payload
+    try { payload = decrypt(session.provider_session, config.encryptionKey, token_hash) }
+    catch { await db(sessions).where({ token_hash }).delete(); return null }
+    if (payload.user_id !== account.supabase_user_id) { await db(sessions).where({ token_hash }).delete(); return null }
+    // The Supabase session is only checked when it must be refreshed, so ordinary requests stay local.
+    if (payload.expires_at > Date.now() + 60000) return session
     // Row locking serializes refresh-token rotation across server instances.
     const result = await db.transaction(async trx => {
-      const query = trx(sessions).where({ token_hash }).where('expires_at', '>', Date.now())
+      const query = trx(sessions).where({ token_hash })
       if (trx.client.config.client === 'pg') query.forUpdate()
-      const session = await query.first()
-      if (!session) return null
-      const account = await trx(accounts).where({ id: session[ownerField] }).first()
-      if (!account || ((ponto || accounts === 'terminal_users') && !account.active)) return null
-      const expectedProvider = local && account.supabase_user_id ? 'supabase' : provider
-      if (session.auth_provider !== expectedProvider) return null
-      if (expectedProvider === 'local') return session
-      if (local && !config.adminRegistrationEnabled) return null
-      let payload
-      try { payload = decrypt(session.provider_session, config.encryptionKey, token_hash) }
+      const current = await query.first()
+      if (!current) return null
+      let latest
+      try { latest = decrypt(current.provider_session, config.encryptionKey, token_hash) }
       catch { await trx(sessions).where({ token_hash }).delete(); return null }
-      if (payload.user_id !== account.supabase_user_id) { await trx(sessions).where({ token_hash }).delete(); return null }
+      if (latest.expires_at > Date.now() + 60000) return current
       try {
-        if (payload.expires_at <= Date.now() + 60000) {
-          const refreshed = providerSession(await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: payload.refresh_token } }))
-          if (refreshed.user_id !== payload.user_id) throw denied()
-          payload = refreshed
-          session.provider_session = encrypt(payload, config.encryptionKey, token_hash)
-          await trx(sessions).where({ token_hash }).update({ provider_session: session.provider_session })
-        }
-        const user = await request('/auth/v1/user', { token: payload.access_token })
-        if (user.id !== account.supabase_user_id || !user.email_confirmed_at || (user.banned_until && Date.parse(user.banned_until) > Date.now())) throw denied()
-        return session
+        const refreshed = providerSession(await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: latest.refresh_token } }))
+        if (refreshed.user_id !== account.supabase_user_id) throw denied()
+        current.provider_session = encrypt(refreshed, config.encryptionKey, token_hash)
+        await trx(sessions).where({ token_hash }).update({ provider_session: current.provider_session })
+        return current
       } catch (error) {
         if (error instanceof SupabaseError && error.status === 401) { await trx(sessions).where({ token_hash }).delete(); return null }
-        // Preserve a successfully rotated refresh token even when getUser is temporarily unavailable.
         return { error }
       }
     })
@@ -116,5 +122,5 @@ export function createSessionAuth(db, config, fetcher, scope = 'admin') {
       catch { /* Local revocation is already durable. */ }
     }
   }
-  return { login, authenticate, logout }
+  return { login, issue, authenticate, logout }
 }

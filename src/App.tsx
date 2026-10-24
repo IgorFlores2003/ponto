@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import ErrorBoundary from './ErrorBoundary'
-import { loadSavedToken } from './AdminLogin'
+import { clearAdminSession, loadSavedToken, saveAdminSession, type AdminSession } from './adminSession'
 import AdminSignup from './AdminSignup'
 import PasswordRecovery from './PasswordRecovery'
 import AdminPanel from './AdminPanel'
@@ -13,11 +13,14 @@ function AccessFlow({ notificationTarget, onView }: { notificationTarget: HTMLDi
   const [view, setView] = useState<View>(() => loadSavedToken() ? 'admin' : 'terminal')
 
   function clearAdminToken() {
-    sessionStorage.removeItem('admin_token')
-    sessionStorage.removeItem('admin_token_expires')
-    localStorage.removeItem('admin_token')
-    localStorage.removeItem('admin_token_expires')
+    clearAdminSession()
     setAdminToken(null)
+  }
+
+  function openAdmin(session: AdminSession) {
+    saveAdminSession(session)
+    setAdminToken(session.token)
+    setView('admin')
   }
 
   async function logoutAccount() {
@@ -29,9 +32,9 @@ function AccessFlow({ notificationTarget, onView }: { notificationTarget: HTMLDi
 
   useEffect(() => { onView(view) }, [view, onView])
 
-  if (view === 'admin' && adminToken) return <AdminPanel token={adminToken} onLogout={() => void logoutAccount()} onUnauthorized={() => { clearAdminToken(); setView('terminal') }} notificationTarget={notificationTarget} />
-  if (view === 'admin-signup') return <AdminSignup onBack={() => setView('terminal')} />
-  if (view === 'admin-recovery') return <PasswordRecovery onBack={() => setView('terminal')} />
+  if (view === 'admin' && adminToken) return <AdminPanel token={adminToken} onSession={openAdmin} onLogout={() => void logoutAccount()} onUnauthorized={() => { clearAdminToken(); setView('terminal') }} notificationTarget={notificationTarget} />
+  if (view === 'admin-signup') return <AdminSignup onBack={() => setView('terminal')} onLogin={openAdmin} />
+  if (view === 'admin-recovery') return <PasswordRecovery onBack={() => setView('terminal')} onLogin={openAdmin} />
   return <TerminalAccess onAdmin={token => { setAdminToken(token); setView('admin') }} onCreateAccount={() => setView('admin-signup')} onForgotPassword={() => setView('admin-recovery')} />
 }
 

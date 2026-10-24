@@ -52,8 +52,27 @@ export function supabaseClient(config, fetcher = fetch) {
     } catch { throw new SupabaseError() }
     if (!response.ok) {
       // Never forward upstream bodies: they may contain project details or credentials.
+      const details = await response.json().catch(() => ({}))
+      const emailRequest = ['/auth/v1/signup', '/auth/v1/resend', '/auth/v1/recover'].includes(path)
+      let message, status
+      if (emailRequest && (response.status === 429 || details?.code === 'over_email_send_rate_limit')) {
+        message = 'Muitas tentativas de envio. Aguarde alguns minutos antes de pedir outro código.'
+        status = 429
+      } else if (emailRequest && details?.code === 'email_address_invalid') {
+        message = 'E-mail inválido. Confira o endereço informado e tente novamente.'
+        status = 400
+      } else if (emailRequest && response.status >= 500) {
+        message = 'Não foi possível enviar o código por e-mail agora. Tente novamente em alguns minutos. Se continuar, entre em contato com o administrador.'
+        status = 503
+      } else if (method === 'PUT' && path === '/auth/v1/user' && details?.code === 'same_password') {
+        message = 'A nova senha precisa ser diferente da atual.'
+        status = 400
+      } else if (method === 'PUT' && path === '/auth/v1/user' && details?.code === 'weak_password') {
+        message = 'Senha fraca ou já exposta em vazamentos. Escolha uma senha mais longa e única.'
+        status = 400
+      }
       const authDenied = path.startsWith('/auth/v1/') && !admin && [400, 401, 403, 422].includes(response.status)
-      const error = new SupabaseError(authDenied ? 'Acesso inválido ou sessão encerrada. Entre novamente.' : undefined, authDenied ? 401 : 503)
+      const error = new SupabaseError(message || (authDenied ? 'Acesso inválido ou sessão encerrada. Entre novamente.' : undefined), status || (authDenied ? 401 : 503))
       error.upstreamStatus = response.status
       throw error
     }
